@@ -6,21 +6,21 @@ import useSocket from "../../hooks/useSocket";
 const DashboardHome = () => {
   const [stats, setStats] = useState({ totalPlatos: 0, totalRestaurantes: 0 });
   const [error, setError] = useState(null);
-  const { socket, isConnected, error: socketError } = useSocket();
+  const { socket, isConnected, error: socketError } = useSocket() || {}; // ✅ Asegurar que `useSocket` siempre retorne un objeto
 
   // Definir fetchStats como callback reutilizable
   const fetchStats = useCallback(async () => {
     console.log("📩 Solicitando estadísticas...");
     try {
       const response = await api.get("/dashboard/stats");
-      setStats(response.data);
+      setStats(response.data || { totalPlatos: 0, totalRestaurantes: 0 }); // ✅ Evitar valores undefined
       setError(null);
       console.log("✅ Datos recibidos:", response.data);
     } catch (err) {
       console.error("❌ Error al obtener estadísticas:", err);
       setError("No se pudieron cargar las estadísticas. Intenta de nuevo más tarde.");
     }
-  }, []); // Sin dependencias externas
+  }, []);
 
   // Cargar estadísticas iniciales
   useEffect(() => {
@@ -29,7 +29,7 @@ const DashboardHome = () => {
 
   // Manejar eventos de socket
   useEffect(() => {
-    if (!isConnected || !socket) return; // Solo proceder si está conectado
+    if (!isConnected || !socket) return; // ✅ Validar `socket` antes de usarlo
 
     const handleMenuUpdate = (data) => {
       console.log("📢 Evento de menú actualizado:", data);
@@ -42,7 +42,7 @@ const DashboardHome = () => {
       console.log("🔹 Eliminando suscripción a eventos...");
       socket.off("menu-updated", handleMenuUpdate);
     };
-  }, [socket, isConnected, fetchStats]); // Añadir fetchStats como dependencia
+  }, [socket, isConnected, fetchStats]);
 
   // Mostrar error de socket si existe
   if (socketError) return <div className="text-red-600">{socketError}</div>;
@@ -58,15 +58,17 @@ const DashboardHome = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white p-6 rounded shadow">
             <h3 className="text-xl font-semibold">Total de Platillos</h3>
-            <p className="text-3xl text-orange-600">{stats.totalPlatos}</p>
+            <p className="text-3xl text-orange-600">{stats.totalPlatos ?? 0}</p> {/* ✅ Evitar undefined */}
           </div>
           <div className="bg-white p-6 rounded shadow">
             <h3 className="text-xl font-semibold">Total de Restaurantes</h3>
-            <p className="text-3xl text-orange-600">{stats.totalRestaurantes}</p>
+            <p className="text-3xl text-orange-600">{stats.totalRestaurantes ?? 0}</p> {/* ✅ Evitar undefined */}
           </div>
           <div className="bg-white p-6 rounded shadow">
             <h3 className="text-xl font-semibold">Estado del Socket</h3>
-            <p className="text-green-600">Conectado (ID: {socket.id})</p>
+            <p className="text-green-600">
+              {socket && socket.id ? `Conectado (ID: ${socket.id})` : "Desconectado"} {/* ✅ Evitar errores */}
+            </p>
           </div>
         </div>
       )}
