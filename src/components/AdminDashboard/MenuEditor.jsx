@@ -1,4 +1,3 @@
-// frontend/src/AdminDashboard/MenuEditor.jsx
 import React, { useState, useEffect, useCallback } from "react";
 import api from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,12 +7,14 @@ import "react-toastify/dist/ReactToastify.css";
 import { QRCodeCanvas } from "qrcode.react";
 import { toPng } from "html-to-image";
 import ThreeDViewer from "@/components/ThreeDViewer";
+import useSocket from "@/hooks/useSocket";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://192.168.18.22:5000";
-const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || "http://192.168.18.22:5173";
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || "http://localhost:5173";
 
 const MenuEditor = ({ restaurantId }) => {
   const { user } = useAuth();
+  const { socket, isConnected, menuUpdate } = useSocket();
   const [menuItems, setMenuItems] = useState([]);
   const [newItem, setNewItem] = useState({ name: "", price: "", description: "", category: "Platos Principales", imageUrl: "" });
   const [editingItem, setEditingItem] = useState(null);
@@ -28,28 +29,22 @@ const MenuEditor = ({ restaurantId }) => {
   const [editingSection, setEditingSection] = useState(null);
   const [newSectionName, setNewSectionName] = useState("");
   const [showPreview, setShowPreview] = useState(false);
-  const qrRef = React.useRef(null);
   const [loading, setLoading] = useState(false);
+  const qrRef = React.useRef(null);
 
-  const saveSections = async (updatedSections) => {
-    try {
-      await api.put(`/restaurantes/${restaurantId}`, { name: restaurantName, colors, logo, sections: updatedSections, plan_id: planId });
-      toast.success("Secciones actualizadas.");
-    } catch (error) {
-      console.error("[MenuEditor] Error actualizando secciones:", error);
-      toast.error("Error al actualizar secciones.");
-    }
-  };
-
+  // Fetch inicial de datos
   const fetchData = useCallback(async () => {
-    if (!user) return;
+    if (!user || !restaurantId) return;
     setLoading(true);
     try {
-      const templateResponse = await api.get("/templates");
-      const restaurantResponse = await api.get(`/restaurantes/${restaurantId}`);
-      setTemplates(templateResponse.data);
+      const [templateResponse, restaurantResponse] = await Promise.all([
+        api.get("/templates"),
+        api.get(`/restaurantes/${restaurantId}`),
+      ]);
+      const templatesData = templateResponse.data || [];
+      setTemplates(templatesData);
       const restaurantData = restaurantResponse.data[0] || {};
-      const template = templateResponse.data.find((t) => t.id === restaurantData.template_id) || templateResponse.data[0];
+      const template = templatesData.find((t) => t.id === restaurantData.template_id) || templatesData[0];
       if (!template) throw new Error("No se encontró plantilla válida");
       setSelectedTemplate(template);
       setColors(restaurantData.colors || template.default_colors);
@@ -60,60 +55,96 @@ const MenuEditor = ({ restaurantId }) => {
       setMenuSections(loadedSections);
 
       const menuResponse = await api.get(`/menu/${restaurantId}`);
-      console.log("Ítems cargados en fetchData:", menuResponse.data); // Depuración
       const items = (menuResponse.data.items || []).map((item) => ({
         ...item,
-        image_url: item.image_url && item.image_url.startsWith("http") ? item.image_url.replace(BACKEND_URL, "") : item.image_url,
+        imageUrl: item.image_url && item.image_url.startsWith("http") ? item.image_url.replace(BACKEND_URL, "") : item.image_url,
       }));
       setMenuItems(items);
     } catch (error) {
-      console.error("[MenuEditor] Error cargando datos:", error);
-      toast.error("Error al cargar datos. Verifica el servidor.");
+      console.error("[MenuEditor] Error al cargar datos:", error.response?.data || error.message);
+      toast.error("Error al cargar los datos del menú.");
       setMenuSections({ "Platos Principales": [], "Postres": [], "Bebidas": [] });
     } finally {
       setLoading(false);
     }
   }, [restaurantId, user]);
 
+  // Guardar secciones en el backend
+  const saveSections = useCallback(async (updatedSections) => {
+    try {
+      await api.put(`/restaurantes/${restaurantId}`, {
+        name: restaurantName,
+        colors,
+        logo,
+        sections: updatedSections,
+        plan_id: planId,
+      });
+      toast.success("Secciones actualizadas correctamente.");
+    } catch (error) {
+      console.error("[MenuEditor] Error al actualizar secciones:", error.response?.data || error.message);
+      toast.error("No se pudieron actualizar las secciones.");
+    }
+  }, [restaurantId, restaurantName, colors, logo, planId]);
+
+  // Cargar datos al montar
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  // Actualizar en tiempo real con WebSocket
+  useEffect(() => {
+    if (menuUpdate && isConnected) {
+      toast.info("Menú actualizado en tiempo real");
+      fetchData();
+    }
+  }, [menuUpdate, isConnected, fetchData]);
+
+  // Guardar configuración
   const handleSaveConfig = async () => {
     try {
-      await api.put(`/restaurantes/${restaurantId}`, { name: restaurantName, colors, logo, sections: menuSections, plan_id: planId });
-      console.log("Configuración guardada:", { restaurantName, colors, logo, sections: menuSections }); // Depuración
+      await api.put(`/restaurantes/${restaurantId}`, {
+        name: restaurantName,
+        colors,
+        logo,
+        sections: menuSections,
+        plan_id: planId,
+      });
       toast.success("Configuración guardada con éxito.");
-      fetchData();
+      await fetchData();
     } catch (error) {
-      console.error("[MenuEditor] Error guardando configuración:", error);
-      toast.error("Error al guardar la configuración.");
+      console.error("[MenuEditor] Error al guardar configuración:", error.response?.data || error.message);
+      toast.error("No se pudo guardar la configuración.");
     }
   };
 
+  // Subir logo
   const handleLogoUpload = async (e) => {
     const file = e.target.files[0];
-    if (!file || file.size > 5 * 1024 * 1024 || !file.type.match(/image\/(jpeg|png)/)) {
-      toast.error("Solo se permiten imágenes JPEG/PNG, máximo 5MB.");
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024 || !file.type.match(/image\/(jpeg|png)/)) {
+      toast.error("Solo se permiten imágenes JPEG/PNG de hasta 5MB.");
       return;
     }
     const formData = new FormData();
     formData.append("logo", file);
     try {
-      const response = await api.post(`/restaurantes/${restaurantId}/upload-logo`, formData, { headers: { "Content-Type": "multipart/form-data" } });
-      console.log("Logo subido:", response.data); // Depuración
+      const response = await api.post(`/restaurantes/${restaurantId}/upload-logo`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
       setLogo(response.data.logoUrl);
       toast.success("Logo subido con éxito.");
-      handleSaveConfig();
+      await handleSaveConfig();
     } catch (error) {
-      console.error("[MenuEditor] Error subiendo logo:", error);
+      console.error("[MenuEditor] Error al subir logo:", error.response?.data || error.message);
       toast.error("Error al subir el logo.");
     }
   };
 
+  // Cambiar plantilla
   const handleTemplateChange = (e) => {
     const type = e.target.value;
     const template = templates.find((t) => t.type === type) || templates[0];
+    if (!template) return;
     setSelectedTemplate(template);
     setColors(template.default_colors);
     const newSections = template.fields || { "Platos Principales": [], "Postres": [], "Bebidas": [] };
@@ -121,67 +152,74 @@ const MenuEditor = ({ restaurantId }) => {
     setMenuItems(Object.entries(newSections).flatMap(([category, items]) => items.map((item) => ({ ...item, category }))));
   };
 
+  // Agregar o actualizar ítem
   const handleAddOrUpdateItem = async (e) => {
     e.preventDefault();
     if (!newItem.name || !newItem.price || !newItem.category) {
-      toast.error("Faltan campos obligatorios.");
+      toast.error("Faltan campos obligatorios: nombre, precio o categoría.");
       return;
     }
     const url = editingItem ? `/menu/${restaurantId}/${editingItem.id}` : `/menu/${restaurantId}`;
     const method = editingItem ? "PUT" : "POST";
-    console.log("Enviando al backend:", { method, url, data: newItem }); // Depuración
     try {
-      const response = await api.request({ method, url, data: newItem });
-      console.log("Respuesta del backend:", response.data); // Depuración
+      console.log("Enviando solicitud:", { method, url, data: newItem });
+      await api.request({ method, url, data: newItem });
       setNewItem({ name: "", price: "", description: "", category: "Platos Principales", imageUrl: "" });
       setEditingItem(null);
-      fetchData();
+      await fetchData();
       toast.success(`Ítem ${editingItem ? "actualizado" : "agregado"} con éxito.`);
+      if (socket) {
+        socket.emit("menu-updated", { restaurantId, item: newItem });
+      }
     } catch (error) {
-      console.error("[MenuEditor] Error guardando ítem:", error);
-      toast.error("Error al guardar el ítem.");
+      console.error("[MenuEditor] Error al guardar ítem:", error.response?.data || error.message);
+      const errorMsg = error.response?.status === 404 ? "Ítem no encontrado" : "Error del servidor";
+      toast.error(`Error al guardar el ítem: ${errorMsg}`);
     }
   };
 
+  // Subir imagen o modelo 3D
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return toast.error("No se seleccionó ningún archivo.");
-    if ((file.type === "model/gltf-binary" || file.name.endsWith(".glb")) && file.size > 10 * 1024 * 1024) {
-      toast.error("El archivo 3D (.glb) es demasiado grande. El límite es de 10MB.");
-      return;
-    }
+    const is3DModel = file.type === "model/gltf-binary" || file.name.endsWith(".glb");
     if (file.size > 10 * 1024 * 1024) {
-      toast.error("Archivo demasiado grande (máx. 10MB).");
+      toast.error("El archivo excede el límite de 10MB.");
       return;
     }
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const response = await api.post(`/menu/${restaurantId}/upload`, formData, { headers: { "Content-Type": "multipart/form-data" } });
-      console.log("Imagen subida:", response.data); // Depuración
+      const response = await api.post(`/menu/${restaurantId}/upload`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
       setNewItem((prev) => ({ ...prev, imageUrl: response.data.fileUrl }));
       toast.success("Archivo subido con éxito.");
     } catch (error) {
-      console.error("[MenuEditor] Error subiendo imagen:", error);
+      console.error("[MenuEditor] Error al subir archivo:", error.response?.data || error.message);
       toast.error("Error al subir el archivo.");
     }
   };
 
+  // Eliminar ítem
   const handleDeleteItem = async (id) => {
     if (!window.confirm("¿Seguro que quieres eliminar este ítem?")) return;
     try {
-      const response = await api.delete(`/menu/${restaurantId}/${id}`);
-      console.log("Ítem eliminado:", response.data); // Depuración
-      fetchData();
+      await api.delete(`/menu/${restaurantId}/${id}`);
+      await fetchData();
       toast.success("Ítem eliminado con éxito.");
+      if (socket) {
+        socket.emit("menu-updated", { restaurantId, deletedItemId: id });
+      }
     } catch (error) {
-      console.error("[MenuEditor] Error eliminando ítem:", error);
+      console.error("[MenuEditor] Error al eliminar ítem:", error.response?.data || error.message);
       toast.error("Error al eliminar el ítem.");
     }
   };
 
-  const handleRenameSection = (oldKey, newKey) => {
-    if (!newKey.trim()) return toast.error("El nombre no puede estar vacío.");
+  // Renombrar sección
+  const handleRenameSection = useCallback((oldKey, newKey) => {
+    if (!newKey.trim()) return toast.error("El nombre de la sección no puede estar vacío.");
     if (menuSections[newKey] && oldKey !== newKey) return toast.error("Ya existe una sección con ese nombre.");
     const updated = {};
     Object.entries(menuSections).forEach(([key, items]) => {
@@ -191,25 +229,28 @@ const MenuEditor = ({ restaurantId }) => {
     saveSections(updated);
     setEditingSection(null);
     setNewSectionName("");
-  };
+  }, [menuSections, saveSections]);
 
-  const handleDeleteSection = (key) => {
+  // Eliminar sección
+  const handleDeleteSection = useCallback((key) => {
     if (!window.confirm("¿Seguro que quieres eliminar esta sección?")) return;
     const updated = { ...menuSections };
     delete updated[key];
     setMenuSections(updated);
     saveSections(updated);
-  };
+  }, [menuSections, saveSections]);
 
-  const handleAddSection = (newName) => {
-    if (!newName.trim()) return toast.error("Ingrese el nombre de la nueva sección.");
+  // Agregar sección
+  const handleAddSection = useCallback((newName) => {
+    if (!newName.trim()) return toast.error("Ingrese un nombre para la nueva sección.");
     if (menuSections[newName]) return toast.error("La sección ya existe.");
     const updated = { ...menuSections, [newName]: [] };
     setMenuSections(updated);
     saveSections(updated);
     setNewSectionName("");
-  };
+  }, [menuSections, saveSections]);
 
+  // Descargar QR
   const handleDownloadQR = async () => {
     if (!qrRef.current) return;
     try {
@@ -218,10 +259,10 @@ const MenuEditor = ({ restaurantId }) => {
       link.download = `qr_carta_${restaurantId}.png`;
       link.href = dataUrl;
       link.click();
-      toast.success("QR descargado con éxito.");
+      toast.success("Código QR descargado con éxito.");
     } catch (error) {
-      console.error("[MenuEditor] Error descargando QR:", error);
-      toast.error("Error al descargar el QR.");
+      console.error("[MenuEditor] Error al descargar QR:", error);
+      toast.error("Error al generar el código QR.");
     }
   };
 
@@ -233,8 +274,6 @@ const MenuEditor = ({ restaurantId }) => {
           <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-500"></div>
         </div>
       )}
-
-      {/* Botón de QR */}
       <motion.button
         onClick={() => setShowQRModal(true)}
         initial={{ opacity: 0, y: -20 }}
@@ -243,8 +282,6 @@ const MenuEditor = ({ restaurantId }) => {
       >
         Generar QR
       </motion.button>
-
-      {/* Título */}
       <motion.h2
         initial={{ opacity: 0, y: -50 }}
         animate={{ opacity: 1, y: 0 }}
@@ -254,10 +291,7 @@ const MenuEditor = ({ restaurantId }) => {
       >
         {restaurantName || "Editor de Menú"}
       </motion.h2>
-
-      {/* Layout Principal */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Configuración */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -283,9 +317,10 @@ const MenuEditor = ({ restaurantId }) => {
               />
               {logo && (
                 <img
-                  src={BACKEND_URL + logo}
+                  src={`${BACKEND_URL}${logo}`}
                   alt="Logo"
                   className="mt-2 w-16 h-16 rounded-full object-cover mx-auto shadow-sm"
+                  onError={() => setLogo(null)}
                 />
               )}
             </div>
@@ -314,6 +349,7 @@ const MenuEditor = ({ restaurantId }) => {
               onChange={handleTemplateChange}
               className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-400"
             >
+              <option value="" disabled>Selecciona una plantilla</option>
               {templates.map((t) => (
                 <option key={t.id} value={t.type}>
                   {t.name}
@@ -328,8 +364,6 @@ const MenuEditor = ({ restaurantId }) => {
             </button>
           </div>
         </motion.div>
-
-        {/* Carta y Edición */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -346,15 +380,15 @@ const MenuEditor = ({ restaurantId }) => {
               {showPreview ? "Volver a Editar" : "Previsualizar"}
             </button>
           </div>
-
           {showPreview ? (
             <div className="space-y-6">
               <header className="text-center mb-4">
                 {logo && (
                   <img
-                    src={BACKEND_URL + logo}
+                    src={`${BACKEND_URL}${logo}`}
                     alt="Logo"
                     className="w-20 h-20 rounded-full mx-auto mb-2 shadow-md"
+                    onError={() => setLogo(null)}
                   />
                 )}
                 <h1 className="text-2xl font-bold" style={{ color: colors.primary }}>
@@ -373,40 +407,38 @@ const MenuEditor = ({ restaurantId }) => {
                     <ul className="grid grid-cols-1 gap-3">
                       {menuItems
                         .filter((item) => item.category === section)
-                        .map((item) => {
-                          const imageSrc = item.imageUrl || item.image_url;
-                          return (
-                            <li
-                              key={item.id || item.name}
-                              className="flex items-center gap-4 p-3 bg-white rounded-md shadow-sm border border-gray-100"
-                            >
-                              {imageSrc ? (
-                                imageSrc.endsWith(".glb") ? (
-                                  <div className="w-16 h-16">
-                                    <ThreeDViewer modelUrl={BACKEND_URL + imageSrc} autoRotate={true} />
-                                  </div>
-                                ) : (
-                                  <img
-                                    src={BACKEND_URL + imageSrc}
-                                    alt="item.name"
-                                    className="w-16 h-16 rounded-md object-cover"
-                                  />
-                                )
+                        .map((item) => (
+                          <li
+                            key={item.id || item.name}
+                            className="flex items-center gap-4 p-3 bg-white rounded-md shadow-sm border border-gray-100"
+                          >
+                            {item.imageUrl ? (
+                              item.imageUrl.endsWith(".glb") ? (
+                                <div className="w-16 h-16">
+                                  <ThreeDViewer modelUrl={`${BACKEND_URL}${item.imageUrl}`} autoRotate />
+                                </div>
                               ) : (
-                                <span className="w-16 h-16 flex items-center justify-center bg-gray-200 rounded-md text-xs text-gray-500">
-                                  Sin Imagen
-                                </span>
-                              )}
-                              <div className="flex-1">
-                                <p className="text-lg font-semibold text-gray-800">{item.name}</p>
-                                <p className="text-sm text-gray-600">{item.description}</p>
-                                <span className="text-base font-medium" style={{ color: colors.secondary }}>
-                                  S/. {item.price}
-                                </span>
-                              </div>
-                            </li>
-                          );
-                        })}
+                                <img
+                                  src={`${BACKEND_URL}${item.imageUrl}`}
+                                  alt={item.name}
+                                  className="w-16 h-16 rounded-md object-cover"
+                                  onError={(e) => (e.target.src = "/placeholder-image.png")}
+                                />
+                              )
+                            ) : (
+                              <span className="w-16 h-16 flex items-center justify-center bg-gray-200 rounded-md text-xs text-gray-500">
+                                Sin Imagen
+                              </span>
+                            )}
+                            <div className="flex-1">
+                              <p className="text-lg font-semibold text-gray-800">{item.name}</p>
+                              <p className="text-sm text-gray-600">{item.description}</p>
+                              <span className="text-base font-medium" style={{ color: colors.secondary }}>
+                                S/. {item.price}
+                              </span>
+                            </div>
+                          </li>
+                        ))}
                     </ul>
                   </div>
                 ))}
@@ -432,6 +464,7 @@ const MenuEditor = ({ restaurantId }) => {
                   placeholder="S/."
                   className="p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-400"
                   step="0.01"
+                  min="0"
                   required
                 />
                 <select
@@ -468,7 +501,6 @@ const MenuEditor = ({ restaurantId }) => {
                   {editingItem ? "Actualizar Plato" : "Agregar Plato"}
                 </button>
               </form>
-
               <div className="bg-gray-50 p-3 rounded-lg max-h-[500px] overflow-y-auto">
                 {Object.entries(menuSections).map(([section]) => (
                   <div key={section} className="mb-4">
@@ -485,14 +517,12 @@ const MenuEditor = ({ restaurantId }) => {
                           <button
                             onClick={() => handleRenameSection(section, newSectionName)}
                             className="p-1 bg-green-500 text-white rounded-md hover:bg-green-600 text-xs"
-                            title="Guardar"
                           >
                             ✓
                           </button>
                           <button
                             onClick={() => setEditingSection(null)}
                             className="p-1 bg-gray-500 text-white rounded-md hover:bg-gray-600 text-xs"
-                            title="Cancelar"
                           >
                             ✗
                           </button>
@@ -513,7 +543,6 @@ const MenuEditor = ({ restaurantId }) => {
                                 setNewSectionName(section);
                               }}
                               className="p-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-xs"
-                              title="Editar sección"
                             >
                               ✎
                             </button>
@@ -523,14 +552,12 @@ const MenuEditor = ({ restaurantId }) => {
                                 setEditingSection(`new-${section}`);
                               }}
                               className="p-1 bg-green-500 text-white rounded-md hover:bg-green-600 text-xs"
-                              title="Agregar nueva sección"
                             >
                               +
                             </button>
                             <button
                               onClick={() => handleDeleteSection(section)}
                               className="p-1 bg-red-500 text-white rounded-md hover:bg-red-600 text-xs"
-                              title="Eliminar sección"
                             >
                               🗑️
                             </button>
@@ -550,14 +577,12 @@ const MenuEditor = ({ restaurantId }) => {
                         <button
                           onClick={() => handleAddSection(newSectionName)}
                           className="p-1 bg-green-500 text-white rounded-md hover:bg-green-600 text-xs"
-                          title="Guardar nueva sección"
                         >
                           ✓
                         </button>
                         <button
                           onClick={() => setEditingSection(null)}
                           className="p-1 bg-gray-500 text-white rounded-md hover:bg-gray-600 text-xs"
-                          title="Cancelar"
                         >
                           ✗
                         </button>
@@ -567,62 +592,58 @@ const MenuEditor = ({ restaurantId }) => {
                       <AnimatePresence>
                         {menuItems
                           .filter((item) => item.category === section)
-                          .map((item) => {
-                            const imageSrc = item.imageUrl || item.image_url;
-                            return (
-                              <motion.li
-                                key={item.id || item.name}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                className="flex items-center gap-4 p-3 bg-white rounded-md shadow-sm border border-gray-100"
-                              >
-                                {imageSrc ? (
-                                  imageSrc.endsWith(".glb") ? (
-                                    <div className="w-16 h-16">
-                                      <ThreeDViewer modelUrl={BACKEND_URL + imageSrc} autoRotate={true} />
-                                    </div>
-                                  ) : (
-                                    <img
-                                      src={BACKEND_URL + imageSrc}
-                                      alt="item.name"
-                                      className="w-16 h-16 rounded-md object-cover"
-                                    />
-                                  )
+                          .map((item) => (
+                            <motion.li
+                              key={item.id || item.name}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -10 }}
+                              className="flex items-center gap-4 p-3 bg-white rounded-md shadow-sm border border-gray-100"
+                            >
+                              {item.imageUrl ? (
+                                item.imageUrl.endsWith(".glb") ? (
+                                  <div className="w-16 h-16">
+                                    <ThreeDViewer modelUrl={`${BACKEND_URL}${item.imageUrl}`} autoRotate />
+                                  </div>
                                 ) : (
-                                  <span className="w-16 h-16 flex items-center justify-center bg-gray-200 rounded-md text-xs text-gray-500">
-                                    Sin Imagen
-                                  </span>
-                                )}
-                                <div className="flex-1">
-                                  <p className="text-lg font-semibold text-gray-800">{item.name}</p>
-                                  <p className="text-sm text-gray-600">{item.description}</p>
-                                  <span className="text-base font-medium" style={{ color: colors.secondary }}>
-                                    S/. {item.price}
-                                  </span>
-                                </div>
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => {
-                                      setEditingItem(item);
-                                      setNewItem({ ...item, imageUrl: item.image_url || item.imageUrl });
-                                    }}
-                                    className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-xs"
-                                    title="Editar ítem"
-                                  >
-                                    ✎
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteItem(item.id)}
-                                    className="p-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-xs"
-                                    title="Eliminar ítem"
-                                  >
-                                    🗑️
-                                  </button>
-                                </div>
-                              </motion.li>
-                            );
-                          })}
+                                  <img
+                                    src={`${BACKEND_URL}${item.imageUrl}`}
+                                    alt={item.name}
+                                    className="w-16 h-16 rounded-md object-cover"
+                                    onError={(e) => (e.target.src = "/placeholder-image.png")}
+                                  />
+                                )
+                              ) : (
+                                <span className="w-16 h-16 flex items-center justify-center bg-gray-200 rounded-md text-xs text-gray-500">
+                                  Sin Imagen
+                                </span>
+                              )}
+                              <div className="flex-1">
+                                <p className="text-lg font-semibold text-gray-800">{item.name}</p>
+                                <p className="text-sm text-gray-600">{item.description}</p>
+                                <span className="text-base font-medium" style={{ color: colors.secondary }}>
+                                  S/. {item.price}
+                                </span>
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingItem(item);
+                                    setNewItem({ ...item });
+                                  }}
+                                  className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-xs"
+                                >
+                                  ✎
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteItem(item.id)}
+                                  className="p-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-xs"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </motion.li>
+                          ))}
                       </AnimatePresence>
                     </ul>
                   </div>
@@ -632,8 +653,6 @@ const MenuEditor = ({ restaurantId }) => {
           )}
         </motion.div>
       </div>
-
-      {/* Modal de QR */}
       <AnimatePresence>
         {showQRModal && (
           <motion.div

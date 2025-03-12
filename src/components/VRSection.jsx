@@ -1,20 +1,45 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import ThreeDViewer from './ThreeDViewer';
 
-const VRSection = () => {
-  const models = [
-    { name: "Platillo 1", url: "/models/example.glb", thumbnail: "/thumbnails/example.jpg", scale: [2, 2, 2] },
-    { name: "Platillo 2", url: "/models/dish2.glb", thumbnail: "/thumbnails/dish2.jpg", scale: [1.5, 1.5, 1.5] },
-    { name: "Platillo 3", url: "/models/dish3.glb", thumbnail: "/thumbnails/dish3.jpg", scale: [1, 1, 1] },
-  ];
+const models = [
+  { name: "Platillo 1", url: "/models/example.glb", thumbnail: "/thumbnails/example.jpg", scale: [2, 2, 2] },
+  { name: "Platillo 2", url: "/models/dish2.glb", thumbnail: "/thumbnails/dish2.jpg", scale: [1.5, 1.5, 1.5] },
+  { name: "Platillo 3", url: "/models/dish3.glb", thumbnail: "/thumbnails/dish3.jpg", scale: [1, 1, 1] },
+];
 
+const VRSection = () => {
   const [selectedModel, setSelectedModel] = useState(models[0]);
 
   const handleSelectModel = useCallback((model) => {
-    console.log("Seleccionando modelo:", model.url);
-    setSelectedModel(model);
-  }, []);
+    if (selectedModel.url !== model.url) {
+      console.log("Seleccionando modelo:", model.url);
+      setSelectedModel(model);
+    }
+  }, [selectedModel]);
+
+  const renderedModels = useMemo(() => (
+    models.map((model) => (
+      <motion.button
+        key={model.url}
+        onClick={() => handleSelectModel(model)}
+        whileHover={{ scale: 1.1 }}
+        title={model.name}
+        className={`border-2 rounded-lg overflow-hidden transition ${
+          selectedModel.url === model.url ? 'border-orange-600' : 'border-gray-300'
+        }`}
+        style={{ width: "100px", height: "100px" }} // 🔹 Ajustar tamaño del botón
+      >
+        <img
+          src={model.thumbnail}
+          alt={model.name}
+          className="w-full h-full object-cover rounded-lg" // 🔹 Imagen ocupa todo sin deformarse
+          loading="lazy"
+          onError={() => console.error(`Error cargando thumbnail: ${model.thumbnail}`)}
+        />
+      </motion.button>
+    ))
+  ), [selectedModel]);
 
   return (
     <section id="3d" className="py-20 bg-amber-100">
@@ -52,30 +77,10 @@ const VRSection = () => {
               modelUrl={selectedModel.url}
               scale={selectedModel.scale}
               autoRotate={true}
-              key={selectedModel.url}
             />
+            {/* 🔹 Thumbnails debajo del visor */}
             <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-4">
-              {models.map((model) => (
-                <motion.button
-                  key={model.url}
-                  onClick={() => handleSelectModel(model)}
-                  whileHover={{ scale: 1.1 }}
-                  title={model.name}
-                  className={`border-2 p-1 rounded-md transition ${
-                    selectedModel.url === model.url ? 'border-orange-600' : 'border-transparent'
-                  }`}
-                >
-                  <div className="w-16 h-16 flex items-center justify-center overflow-hidden rounded-md">
-                    <img
-                      src={model.thumbnail}
-                      alt={model.name}
-                      className="w-16 h-16 object-cover"
-                      loading="lazy"
-                      onError={(e) => console.error(`Error cargando thumbnail: ${model.thumbnail}`)}
-                    />
-                  </div>
-                </motion.button>
-              ))}
+              {renderedModels}
             </div>
           </div>
         </motion.div>
@@ -85,3 +90,5 @@ const VRSection = () => {
 };
 
 export default VRSection;
+
+
