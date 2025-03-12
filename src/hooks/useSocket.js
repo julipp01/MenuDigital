@@ -1,17 +1,44 @@
-
-// useSocket.js (Corregido)
+import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
+const useSocket = () => {
+  const [socket, setSocket] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState(null);
 
-const socketIo = io(SOCKET_URL, {
-  reconnectionAttempts: 5,
-  timeout: 5000,
-  autoConnect: true,
-  transports: ["websocket", "polling"],
-});
+  useEffect(() => {
+    const newSocket = io(import.meta.env.VITE_BACKEND_URL, {
+      transports: ["websocket"],
+    });
 
-export default socketIo;
+    newSocket.on("connect", () => {
+      console.log("✅ Conectado al servidor WebSocket");
+      setIsConnected(true);
+      setError(null);
+    });
+
+    newSocket.on("disconnect", () => {
+      console.warn("⚠ WebSocket desconectado");
+      setIsConnected(false);
+    });
+
+    newSocket.on("connect_error", (err) => {
+      console.error("❌ Error en WebSocket:", err);
+      setError("Error al conectar al WebSocket");
+    });
+
+    setSocket(newSocket);
+
+    return () => {
+      newSocket.close();
+    };
+  }, []);
+
+  return { socket, isConnected, error };
+};
+
+export default useSocket;
+
 
 
 
