@@ -1,67 +1,95 @@
 import { useEffect, useState, useRef } from "react";
-import { io } from "socket.io-client";
 
-const useSocket = () => {
+const useSocket = (url = "wss://menudigital-backend-production.up.railway.app") => {
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [error, setError] = useState(null);
   const [menuUpdate, setMenuUpdate] = useState(null);
-  const socketRef = useRef(null); // Referencia para mantener el socket entre renders
+  const reconnectAttempts = useRef(0);
+  const maxReconnectAttempts = 5;
+  const reconnectInterval = 5000;
+  const pingInterval = useRef(null);
 
-  useEffect(() => {
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || "ws://localhost:5000";
-    const finalSocketUrl = import.meta.env.VITE_ENV === "development" ? socketUrl.replace("https://", "ws://") : socketUrl.replace("https://", "wss://");
+  const connectWebSocket = () => {
+    if (reconnectAttempts.current >= maxReconnectAttempts) {
+      console.error(`❌ Máximo de intentos de reconexión alcanzado (${maxReconnectAttempts}).`);
+      return;
+    }
 
-    if (socketRef.current) return; // Evitar reiniciar el socket si ya existe
+    console.log(`🔹 Conectando a WebSocket en: ${url}`);
+    const ws = new WebSocket(url);
 
-    console.log(`🔹 Conectando a WebSocket en: ${finalSocketUrl}`);
-
-    const newSocket = io(finalSocketUrl, {
-      transports: ["websocket"],
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 3000,
-      timeout: 20000,
-    });
-
-    socketRef.current = newSocket;
-    setSocket(newSocket);
-
-    newSocket.on("connect", () => {
-      console.log("✅ Conectado al servidor WebSocket:", newSocket.id);
+    ws.onopen = () => {
+      console.log(`✅ Conectado al servidor WebSocket: ${ws._socket?.remoteAddress || "ID no disponible"}`);
       setIsConnected(true);
-      setError(null);
-    });
+      setSocket(ws);
+      reconnectAttempts.current = 0;
 
-    newSocket.on("disconnect", (reason) => {
-      console.warn("⚠ WebSocket desconectado. Razón:", reason);
-      setIsConnected(false);
-    });
+      pingInterval.current = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "ping" }));
+          console.log("📡 Ping enviado al servidor");
+        }
+      }, 30000);
+    };
 
-    newSocket.on("connect_error", (err) => {
-      console.error("❌ Error en WebSocket:", err.message);
-      setError(`Error al conectar al WebSocket: ${err.message}`);
-    });
-
-    newSocket.on("menu-changed", (data) => {
-      console.log("📩 Menú actualizado recibido:", data);
-      setMenuUpdate(data);
-    });
-
-    return () => {
-      console.log("🔹 Cerrando conexión WebSocket");
-      if (socketRef.current) {
-        socketRef.current.off("connect");
-        socketRef.current.off("disconnect");
-        socketRef.current.off("connect_error");
-        socketRef.current.off("menu-changed");
-        socketRef.current.close();
-        socketRef.current = null;
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        console.log("📩 Mensaje recibido:", message);
+        if (message.type === "menu-changed") {
+          setMenuUpdate(message.data);
+        } else if (message.type === "pong") {
+          console.log("📡 Pong recibido del servidor");
+        }
+      } catch (error) {
+        console.error("❌ Error al parsear mensaje WebSocket:", error.message);
       }
     };
-  }, []); // Dependencias vacías para ejecutarse solo al montar
 
-  return { socket: socketRef.current, isConnected, error, menuUpdate };
+    ws.onclose = (event) => {
+      console.log(`🔹 Cerrando conexión WebSocket - Código: ${event.code}, Razón: ${event.reason || "Desconocida"}`);
+      setIsConnected(false);
+      setSocket(null);
+      clearInterval(pingInterval.current);
+
+      if (document.visibilityState === "visible") {
+        reconnectAttempts.current += 1;
+        console.log(`🔄 Intentando reconectar (${reconnectAttempts.current}/${maxReconnectAttempts}) en ${reconnectInterval / 1000}s...`);
+        setTimeout(connectWebSocket, reconnectInterval);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error("❌ Error en WebSocket:", error.message || error);
+      ws.close();
+    };
+  };
+
+  useEffect(() => {
+    connectWebSocket();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && !socket) {
+        console.log("🔄 Pestaña visible, intentando reconectar WebSocket...");
+        connectWebSocket();
+      } else if (document.visibilityState === "hidden" && socket) {
+        console.log("🔹 Pestaña oculta, manteniendo conexión viva...");
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (socket) {
+        console.log("🔹 Cerrando conexión WebSocket al desmontar");
+        socket.close();
+        clearInterval(pingInterval.current);
+      }
+    };
+  }, [url]);
+
+  return { socket, isConnected, menuUpdate };
 };
 
 export default useSocket;
