@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import api from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
@@ -6,6 +6,7 @@ import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { QRCodeCanvas } from "qrcode.react";
 import { toPng } from "html-to-image";
+import Compressor from "compressorjs";
 import ThreeDViewer from "@/components/ThreeDViewer";
 import useSocket from "@/hooks/useSocket";
 
@@ -16,21 +17,44 @@ const MenuEditor = ({ restaurantId }) => {
   const { user } = useAuth();
   const { socket, isConnected, menuUpdate } = useSocket();
   const [menuItems, setMenuItems] = useState([]);
-  const [newItem, setNewItem] = useState({ name: "", price: "", description: "", category: "Platos Principales", imageUrl: "" });
+  const [newItem, setNewItem] = useState({
+    name: "",
+    price: "",
+    description: "",
+    category: "Platos Principales",
+    imageUrl: "",
+  });
   const [editingItem, setEditingItem] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [colors, setColors] = useState({ primary: "#FF9800", secondary: "#4CAF50" });
   const [restaurantName, setRestaurantName] = useState("Mi Restaurante");
   const [logo, setLogo] = useState(null);
-  const [menuSections, setMenuSections] = useState({ "Platos Principales": [], "Postres": [], "Bebidas": [] });
+  const [menuSections, setMenuSections] = useState({
+    "Platos Principales": [],
+    Postres: [],
+    Bebidas: [],
+  });
   const [planId, setPlanId] = useState(null);
   const [showQRModal, setShowQRModal] = useState(false);
   const [editingSection, setEditingSection] = useState(null);
   const [newSectionName, setNewSectionName] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [loading, setLoading] = useState(false);
-  const qrRef = React.useRef(null);
+  const [uploading, setUploading] = useState(false); // Estado para la carga de archivos
+  const qrRef = useRef(null);
+
+  // Memoizar la URL base para evitar recalcularla innecesariamente
+  const apiBaseUrl = useMemo(() => import.meta.env.VITE_API_URL, []);
+
+  // Función para construir URLs de imágenes
+  const buildImageUrl = useCallback((url) => {
+    if (!url) return null;
+    // Si la URL ya es absoluta, devolverla tal cual
+    if (url.startsWith("http")) return url;
+    // Si es relativa, concatenar con la URL base
+    return `${apiBaseUrl}${url}`;
+  }, [apiBaseUrl]);
 
   // Fetch inicial de datos
   const fetchData = useCallback(async () => {
@@ -44,47 +68,56 @@ const MenuEditor = ({ restaurantId }) => {
       const templatesData = templateResponse.data || [];
       setTemplates(templatesData);
       const restaurantData = restaurantResponse.data[0] || {};
-      const template = templatesData.find((t) => t.id === restaurantData.template_id) || templatesData[0];
+      const template =
+        templatesData.find((t) => t.id === restaurantData.template_id) || templatesData[0];
       if (!template) throw new Error("No se encontró plantilla válida");
       setSelectedTemplate(template);
       setColors(restaurantData.colors || template.default_colors);
       setRestaurantName(restaurantData.name || "Mi Restaurante");
-      setLogo(restaurantData.logo_url || null);
+      setLogo(buildImageUrl(restaurantData.logo_url));
       setPlanId(restaurantData.plan_id || null);
-      const loadedSections = restaurantData.sections || template.fields || { "Platos Principales": [], "Postres": [], "Bebidas": [] };
+      const loadedSections =
+        restaurantData.sections ||
+        template.fields || { "Platos Principales": [], Postres: [], Bebidas: [] };
       setMenuSections(loadedSections);
 
       const menuResponse = await api.get(`/menu/${restaurantId}`);
       const items = (menuResponse.data.items || []).map((item) => ({
         ...item,
-        imageUrl: item.image_url && item.image_url.startsWith("http") ? item.image_url.replace(import.meta.env.VITE_API_URL, "") : item.image_url,
+        imageUrl: buildImageUrl(item.image_url),
       }));
       setMenuItems(items);
     } catch (error) {
       console.error("[MenuEditor] Error al cargar datos:", error.response?.data || error.message);
       toast.error("Error al cargar los datos del menú.");
-      setMenuSections({ "Platos Principales": [], "Postres": [], "Bebidas": [] });
+      setMenuSections({ "Platos Principales": [], Postres: [], Bebidas: [] });
     } finally {
       setLoading(false);
     }
-  }, [restaurantId, user]);
+  }, [restaurantId, user, buildImageUrl]);
 
   // Guardar secciones en el backend
-  const saveSections = useCallback(async (updatedSections) => {
-    try {
-      await api.put(`/restaurantes/${restaurantId}`, {
-        name: restaurantName,
-        colors,
-        logo,
-        sections: updatedSections,
-        plan_id: planId,
-      });
-      toast.success("Secciones actualizadas correctamente.");
-    } catch (error) {
-      console.error("[MenuEditor] Error al actualizar secciones:", error.response?.data || error.message);
-      toast.error("No se pudieron actualizar las secciones.");
-    }
-  }, [restaurantId, restaurantName, colors, logo, planId]);
+  const saveSections = useCallback(
+    async (updatedSections) => {
+      try {
+        await api.put(`/restaurantes/${restaurantId}`, {
+          name: restaurantName,
+          colors,
+          logo,
+          sections: updatedSections,
+          plan_id: planId,
+        });
+        toast.success("Secciones actualizadas correctamente.");
+      } catch (error) {
+        console.error(
+          "[MenuEditor] Error al actualizar secciones:",
+          error.response?.data || error.message
+        );
+        toast.error("No se pudieron actualizar las secciones.");
+      }
+    },
+    [restaurantId, restaurantName, colors, logo, planId]
+  );
 
   // Cargar datos al montar
   useEffect(() => {
@@ -112,12 +145,15 @@ const MenuEditor = ({ restaurantId }) => {
       toast.success("Configuración guardada con éxito.");
       await fetchData();
     } catch (error) {
-      console.error("[MenuEditor] Error al guardar configuración:", error.response?.data || error.message);
+      console.error(
+        "[MenuEditor] Error al guardar configuración:",
+        error.response?.data || error.message
+      );
       toast.error("No se pudo guardar la configuración.");
     }
   };
 
-  // Subir logo
+  // Subir logo con compresión
   const handleLogoUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -125,18 +161,36 @@ const MenuEditor = ({ restaurantId }) => {
       toast.error("Solo se permiten imágenes JPEG/PNG de hasta 5MB.");
       return;
     }
-    const formData = new FormData();
-    formData.append("logo", file);
+    setUploading(true);
     try {
-      const response = await api.post(`/restaurantes/${restaurantId}/upload-logo`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+      // Comprimir la imagen antes de subirla
+      new Compressor(file, {
+        quality: 0.6,
+        maxWidth: 800,
+        maxHeight: 800,
+        success: async (compressedFile) => {
+          const formData = new FormData();
+          formData.append("logo", compressedFile);
+          const response = await api.post(`/restaurantes/${restaurantId}/upload-logo`, formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+          const logoUrl = buildImageUrl(response.data.logoUrl);
+          console.log("[MenuEditor] Logo URL recibida del backend:", logoUrl);
+          setLogo(logoUrl);
+          toast.success("Logo subido con éxito.");
+          await handleSaveConfig();
+          setUploading(false);
+        },
+        error: (err) => {
+          console.error("[MenuEditor] Error al comprimir imagen:", err);
+          toast.error("Error al procesar la imagen.");
+          setUploading(false);
+        },
       });
-      setLogo(response.data.logoUrl);
-      toast.success("Logo subido con éxito.");
-      await handleSaveConfig();
     } catch (error) {
       console.error("[MenuEditor] Error al subir logo:", error.response?.data || error.message);
       toast.error("Error al subir el logo.");
+      setUploading(false);
     }
   };
 
@@ -147,9 +201,14 @@ const MenuEditor = ({ restaurantId }) => {
     if (!template) return;
     setSelectedTemplate(template);
     setColors(template.default_colors);
-    const newSections = template.fields || { "Platos Principales": [], "Postres": [], "Bebidas": [] };
+    const newSections =
+      template.fields || { "Platos Principales": [], Postres: [], Bebidas: [] };
     setMenuSections(newSections);
-    setMenuItems(Object.entries(newSections).flatMap(([category, items]) => items.map((item) => ({ ...item, category }))));
+    setMenuItems(
+      Object.entries(newSections).flatMap(([category, items]) =>
+        items.map((item) => ({ ...item, category }))
+      )
+    );
   };
 
   // Agregar o actualizar ítem
@@ -164,7 +223,13 @@ const MenuEditor = ({ restaurantId }) => {
     try {
       console.log("Enviando solicitud:", { method, url, data: newItem });
       await api.request({ method, url, data: newItem });
-      setNewItem({ name: "", price: "", description: "", category: "Platos Principales", imageUrl: "" });
+      setNewItem({
+        name: "",
+        price: "",
+        description: "",
+        category: "Platos Principales",
+        imageUrl: "",
+      });
       setEditingItem(null);
       await fetchData();
       toast.success(`Ítem ${editingItem ? "actualizado" : "agregado"} con éxito.`);
@@ -178,7 +243,7 @@ const MenuEditor = ({ restaurantId }) => {
     }
   };
 
-  // Subir imagen o modelo 3D
+  // Subir imagen o modelo 3D con compresión
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return toast.error("No se seleccionó ningún archivo.");
@@ -187,17 +252,51 @@ const MenuEditor = ({ restaurantId }) => {
       toast.error("El archivo excede el límite de 10MB.");
       return;
     }
-    const formData = new FormData();
-    formData.append("file", file);
+    setUploading(true);
     try {
-      const response = await api.post(`/menu/${restaurantId}/upload`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      setNewItem((prev) => ({ ...prev, imageUrl: response.data.fileUrl }));
-      toast.success("Archivo subido con éxito.");
+      if (!is3DModel) {
+        // Comprimir imágenes, pero no modelos 3D
+        new Compressor(file, {
+          quality: 0.6,
+          maxWidth: 800,
+          maxHeight: 800,
+          success: async (compressedFile) => {
+            const formData = new FormData();
+            formData.append("file", compressedFile);
+            const response = await api.post(`/menu/${restaurantId}/upload`, formData, {
+              headers: { "Content-Type": "multipart/form-data" },
+            });
+            setNewItem((prev) => ({
+              ...prev,
+              imageUrl: buildImageUrl(response.data.fileUrl),
+            }));
+            toast.success("Archivo subido con éxito.");
+            setUploading(false);
+          },
+          error: (err) => {
+            console.error("[MenuEditor] Error al comprimir imagen:", err);
+            toast.error("Error al procesar la imagen.");
+            setUploading(false);
+          },
+        });
+      } else {
+        // Subir modelos 3D sin compresión
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await api.post(`/menu/${restaurantId}/upload`, formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        setNewItem((prev) => ({
+          ...prev,
+          imageUrl: buildImageUrl(response.data.fileUrl),
+        }));
+        toast.success("Archivo subido con éxito.");
+        setUploading(false);
+      }
     } catch (error) {
       console.error("[MenuEditor] Error al subir archivo:", error.response?.data || error.message);
       toast.error("Error al subir el archivo.");
+      setUploading(false);
     }
   };
 
@@ -218,37 +317,47 @@ const MenuEditor = ({ restaurantId }) => {
   };
 
   // Renombrar sección
-  const handleRenameSection = useCallback((oldKey, newKey) => {
-    if (!newKey.trim()) return toast.error("El nombre de la sección no puede estar vacío.");
-    if (menuSections[newKey] && oldKey !== newKey) return toast.error("Ya existe una sección con ese nombre.");
-    const updated = {};
-    Object.entries(menuSections).forEach(([key, items]) => {
-      updated[key === oldKey ? newKey : key] = items;
-    });
-    setMenuSections(updated);
-    saveSections(updated);
-    setEditingSection(null);
-    setNewSectionName("");
-  }, [menuSections, saveSections]);
+  const handleRenameSection = useCallback(
+    (oldKey, newKey) => {
+      if (!newKey.trim()) return toast.error("El nombre de la sección no puede estar vacío.");
+      if (menuSections[newKey] && oldKey !== newKey)
+        return toast.error("Ya existe una sección con ese nombre.");
+      const updated = {};
+      Object.entries(menuSections).forEach(([key, items]) => {
+        updated[key === oldKey ? newKey : key] = items;
+      });
+      setMenuSections(updated);
+      saveSections(updated);
+      setEditingSection(null);
+      setNewSectionName("");
+    },
+    [menuSections, saveSections]
+  );
 
   // Eliminar sección
-  const handleDeleteSection = useCallback((key) => {
-    if (!window.confirm("¿Seguro que quieres eliminar esta sección?")) return;
-    const updated = { ...menuSections };
-    delete updated[key];
-    setMenuSections(updated);
-    saveSections(updated);
-  }, [menuSections, saveSections]);
+  const handleDeleteSection = useCallback(
+    (key) => {
+      if (!window.confirm("¿Seguro que quieres eliminar esta sección?")) return;
+      const updated = { ...menuSections };
+      delete updated[key];
+      setMenuSections(updated);
+      saveSections(updated);
+    },
+    [menuSections, saveSections]
+  );
 
   // Agregar sección
-  const handleAddSection = useCallback((newName) => {
-    if (!newName.trim()) return toast.error("Ingrese un nombre para la nueva sección.");
-    if (menuSections[newName]) return toast.error("La sección ya existe.");
-    const updated = { ...menuSections, [newName]: [] };
-    setMenuSections(updated);
-    saveSections(updated);
-    setNewSectionName("");
-  }, [menuSections, saveSections]);
+  const handleAddSection = useCallback(
+    (newName) => {
+      if (!newName.trim()) return toast.error("Ingrese un nombre para la nueva sección.");
+      if (menuSections[newName]) return toast.error("La sección ya existe.");
+      const updated = { ...menuSections, [newName]: [] };
+      setMenuSections(updated);
+      saveSections(updated);
+      setNewSectionName("");
+    },
+    [menuSections, saveSections]
+  );
 
   // Descargar QR
   const handleDownloadQR = async () => {
@@ -266,10 +375,18 @@ const MenuEditor = ({ restaurantId }) => {
     }
   };
 
+  // Memoizar las secciones filtradas para mejorar el rendimiento
+  const filteredSections = useMemo(() => {
+    return Object.entries(menuSections).map(([section]) => ({
+      section,
+      items: menuItems.filter((item) => item.category === section),
+    }));
+  }, [menuSections, menuItems]);
+
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-6 font-sans">
       <ToastContainer />
-      {loading && (
+      {(loading || uploading) && (
         <div className="fixed inset-0 bg-gray-200 bg-opacity-50 flex items-center justify-center z-50">
           <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-500"></div>
         </div>
@@ -314,13 +431,16 @@ const MenuEditor = ({ restaurantId }) => {
                 accept="image/jpeg,image/png"
                 onChange={handleLogoUpload}
                 className="w-full p-1 border rounded-lg text-xs"
+                disabled={uploading}
               />
               {logo && (
                 <img
-                  src={`${import.meta.env.VITE_API_URL}${logo}`}
+                  src={logo}
                   alt="Logo"
                   className="mt-2 w-16 h-16 rounded-full object-cover mx-auto shadow-sm"
-                  onError={() => setLogo(null)}
+                  onError={(e) => {
+                    console.error("[MenuEditor] Error al cargar el logo. URL intentada:", e.target.src);
+                  }}
                 />
               )}
             </div>
@@ -349,7 +469,9 @@ const MenuEditor = ({ restaurantId }) => {
               onChange={handleTemplateChange}
               className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-400"
             >
-              <option value="" disabled>Selecciona una plantilla</option>
+              <option value="" disabled>
+                Selecciona una plantilla
+              </option>
               {templates.map((t) => (
                 <option key={t.id} value={t.type}>
                   {t.name}
@@ -359,6 +481,7 @@ const MenuEditor = ({ restaurantId }) => {
             <button
               onClick={handleSaveConfig}
               className="w-full py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
+              disabled={loading || uploading}
             >
               Guardar Configuración
             </button>
@@ -385,10 +508,15 @@ const MenuEditor = ({ restaurantId }) => {
               <header className="text-center mb-4">
                 {logo && (
                   <img
-                    src={`${import.meta.env.VITE_API_URL}${logo}`}
+                    src={logo}
                     alt="Logo"
                     className="w-20 h-20 rounded-full mx-auto mb-2 shadow-md"
-                    onError={() => setLogo(null)}
+                    onError={(e) => {
+                      console.error(
+                        "[MenuEditor] Error al cargar el logo en vista previa. URL intentada:",
+                        e.target.src
+                      );
+                    }}
                   />
                 )}
                 <h1 className="text-2xl font-bold" style={{ color: colors.primary }}>
@@ -396,7 +524,7 @@ const MenuEditor = ({ restaurantId }) => {
                 </h1>
               </header>
               <div className="bg-gray-50 p-3 rounded-lg max-h-[500px] overflow-y-auto">
-                {Object.entries(menuSections).map(([section]) => (
+                {filteredSections.map(({ section, items }) => (
                   <div key={section} className="mb-4">
                     <h4
                       className="text-lg font-semibold mb-2 p-2 rounded-t-md text-white"
@@ -405,40 +533,47 @@ const MenuEditor = ({ restaurantId }) => {
                       {section}
                     </h4>
                     <ul className="grid grid-cols-1 gap-3">
-                      {menuItems
-                        .filter((item) => item.category === section)
-                        .map((item) => (
-                          <li
-                            key={item.id || item.name}
-                            className="flex items-center gap-4 p-3 bg-white rounded-md shadow-sm border border-gray-100"
-                          >
-                            {item.imageUrl ? (
-                              item.imageUrl.endsWith(".glb") ? (
-                                <div className="w-16 h-16">
-                                  <ThreeDViewer modelUrl={`${import.meta.env.VITE_API_URL}${item.imageUrl}`} autoRotate />
-                                </div>
-                              ) : (
-                                <img
-                                  src={`${import.meta.env.VITE_API_URL}${item.imageUrl}`}
-                                  alt={item.name}
-                                  className="w-16 h-16 rounded-md object-cover"
-                                  onError={(e) => (e.target.src = "/placeholder-image.png")}
-                                />
-                              )
+                      {items.map((item) => (
+                        <li
+                          key={item.id || item.name}
+                          className="flex items-center gap-4 p-3 bg-white rounded-md shadow-sm border border-gray-100"
+                        >
+                          {item.imageUrl ? (
+                            item.imageUrl.endsWith(".glb") ? (
+                              <div className="w-16 h-16">
+                                <ThreeDViewer modelUrl={item.imageUrl} autoRotate />
+                              </div>
                             ) : (
-                              <span className="w-16 h-16 flex items-center justify-center bg-gray-200 rounded-md text-xs text-gray-500">
-                                Sin Imagen
-                              </span>
-                            )}
-                            <div className="flex-1">
-                              <p className="text-lg font-semibold text-gray-800">{item.name}</p>
-                              <p className="text-sm text-gray-600">{item.description}</p>
-                              <span className="text-base font-medium" style={{ color: colors.secondary }}>
-                                S/. {item.price}
-                              </span>
-                            </div>
-                          </li>
-                        ))}
+                              <img
+                                src={item.imageUrl}
+                                alt={item.name}
+                                className="w-16 h-16 rounded-md object-cover"
+                                onError={(e) => {
+                                  console.error(
+                                    "[MenuEditor] Error al cargar imagen en vista previa. URL intentada:",
+                                    e.target.src
+                                  );
+                                  e.target.src = "/placeholder-image.png";
+                                }}
+                              />
+                            )
+                          ) : (
+                            <span className="w-16 h-16 flex items-center justify-center bg-gray-200 rounded-md text-xs text-gray-500">
+                              Sin Imagen
+                            </span>
+                          )}
+                          <div className="flex-1">
+                            <p className="text-lg font-semibold text-gray-800">{item.name}</p>
+                            <p className="text-sm text-gray-600">{item.description}</p>
+                            <span
+                              className="text-base font-medium"
+                              style={{ color: colors.secondary }}
+                            >
+                              S/. {item.price}
+                            </span>
+                          </div>
+                        </li>
+                      ))}
                     </ul>
                   </div>
                 ))}
@@ -446,7 +581,10 @@ const MenuEditor = ({ restaurantId }) => {
             </div>
           ) : (
             <>
-              <form onSubmit={handleAddOrUpdateItem} className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4 mb-6">
+              <form
+                onSubmit={handleAddOrUpdateItem}
+                className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4 mb-6"
+              >
                 <input
                   type="text"
                   name="name"
@@ -493,18 +631,23 @@ const MenuEditor = ({ restaurantId }) => {
                   accept="image/jpeg,image/png,model/gltf-binary,.glb"
                   onChange={handleImageUpload}
                   className="p-1 border rounded-lg text-xs sm:col-span-2"
+                  disabled={uploading}
                 />
                 <button
                   type="submit"
                   className="py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
+                  disabled={loading || uploading}
                 >
                   {editingItem ? "Actualizar Plato" : "Agregar Plato"}
                 </button>
               </form>
               <div className="bg-gray-50 p-3 rounded-lg max-h-[500px] overflow-y-auto">
-                {Object.entries(menuSections).map(([section]) => (
+                {filteredSections.map(({ section, items }) => (
                   <div key={section} className="mb-4">
-                    <div className="flex items-center justify-between p-2 rounded-t-md text-white" style={{ backgroundColor: colors.primary }}>
+                    <div
+                      className="flex items-center justify-between p-2 rounded-t-md text-white"
+                      style={{ backgroundColor: colors.primary }}
+                    >
                       {editingSection === section ? (
                         <div className="flex items-center gap-2 w-full">
                           <input
@@ -590,60 +733,67 @@ const MenuEditor = ({ restaurantId }) => {
                     )}
                     <ul className="grid grid-cols-1 gap-3 mt-2">
                       <AnimatePresence>
-                        {menuItems
-                          .filter((item) => item.category === section)
-                          .map((item) => (
-                            <motion.li
-                              key={item.id || item.name}
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -10 }}
-                              className="flex items-center gap-4 p-3 bg-white rounded-md shadow-sm border border-gray-100"
-                            >
-                              {item.imageUrl ? (
-                                item.imageUrl.endsWith(".glb") ? (
-                                  <div className="w-16 h-16">
-                                    <ThreeDViewer modelUrl={`${import.meta.env.VITE_API_URL}${item.imageUrl}`} autoRotate />
-                                  </div>
-                                ) : (
-                                  <img
-                                    src={`${import.meta.env.VITE_API_URL}${item.imageUrl}`}
-                                    alt={item.name}
-                                    className="w-16 h-16 rounded-md object-cover"
-                                    onError={(e) => (e.target.src = "/placeholder-image.png")}
-                                  />
-                                )
+                        {items.map((item) => (
+                          <motion.li
+                            key={item.id || item.name}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="flex items-center gap-4 p-3 bg-white rounded-md shadow-sm border border-gray-100"
+                          >
+                            {item.imageUrl ? (
+                              item.imageUrl.endsWith(".glb") ? (
+                                <div className="w-16 h-16">
+                                  <ThreeDViewer modelUrl={item.imageUrl} autoRotate />
+                                </div>
                               ) : (
-                                <span className="w-16 h-16 flex items-center justify-center bg-gray-200 rounded-md text-xs text-gray-500">
-                                  Sin Imagen
-                                </span>
-                              )}
-                              <div className="flex-1">
-                                <p className="text-lg font-semibold text-gray-800">{item.name}</p>
-                                <p className="text-sm text-gray-600">{item.description}</p>
-                                <span className="text-base font-medium" style={{ color: colors.secondary }}>
-                                  S/. {item.price}
-                                </span>
-                              </div>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => {
-                                    setEditingItem(item);
-                                    setNewItem({ ...item });
+                                <img
+                                  src={item.imageUrl}
+                                  alt={item.name}
+                                  className="w-16 h-16 rounded-md object-cover"
+                                  onError={(e) => {
+                                    console.error(
+                                      "[MenuEditor] Error al cargar imagen. URL intentada:",
+                                      e.target.src
+                                    );
+                                    e.target.src = "/placeholder-image.png";
                                   }}
-                                  className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-xs"
-                                >
-                                  ✎
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteItem(item.id)}
-                                  className="p-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-xs"
-                                >
-                                  🗑️
-                                </button>
-                              </div>
-                            </motion.li>
-                          ))}
+                                />
+                              )
+                            ) : (
+                              <span className="w-16 h-16 flex items-center justify-center bg-gray-200 rounded-md text-xs text-gray-500">
+                                Sin Imagen
+                              </span>
+                            )}
+                            <div className="flex-1">
+                              <p className="text-lg font-semibold text-gray-800">{item.name}</p>
+                              <p className="text-sm text-gray-600">{item.description}</p>
+                              <span
+                                className="text-base font-medium"
+                                style={{ color: colors.secondary }}
+                              >
+                                S/. {item.price}
+                              </span>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingItem(item);
+                                  setNewItem({ ...item });
+                                }}
+                                className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-xs"
+                              >
+                                ✎
+                              </button>
+                              <button
+                                onClick={() => handleDeleteItem(item.id)}
+                                className="p-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-xs"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </motion.li>
+                        ))}
                       </AnimatePresence>
                     </ul>
                   </div>
@@ -669,7 +819,11 @@ const MenuEditor = ({ restaurantId }) => {
             >
               <h4 className="text-lg font-bold mb-3 text-gray-800">Código QR</h4>
               <div ref={qrRef} className="bg-white p-3 rounded-lg flex justify-center">
-                <QRCodeCanvas value={`${FRONTEND_URL}/menu/${restaurantId}`} size={150} fgColor={colors.primary} />
+                <QRCodeCanvas
+                  value={`${FRONTEND_URL}/menu/${restaurantId}`}
+                  size={150}
+                  fgColor={colors.primary}
+                />
               </div>
               <div className="mt-3 flex justify-end gap-2">
                 <button
@@ -694,6 +848,8 @@ const MenuEditor = ({ restaurantId }) => {
 };
 
 export default MenuEditor;
+
+
 
 
 
