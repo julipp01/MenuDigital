@@ -41,22 +41,20 @@ const MenuEditor = ({ restaurantId }) => {
   const [newSectionName, setNewSectionName] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false); // Estado para la carga de archivos
+  const [uploading, setUploading] = useState(false);
   const qrRef = useRef(null);
 
-  // Memoizar la URL base para evitar recalcularla innecesariamente
   const apiBaseUrl = useMemo(() => import.meta.env.VITE_API_URL, []);
 
-  // Función para construir URLs de imágenes
   const buildImageUrl = useCallback((url) => {
     if (!url) return null;
-    // Si la URL ya es absoluta, devolverla tal cual
     if (url.startsWith("http")) return url;
-    // Si es relativa, concatenar con la URL base
-    return `${apiBaseUrl}${url}`;
+    const baseUrl = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
+    const processedUrl = `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+    console.log("[MenuEditor] URL procesada:", processedUrl);
+    return processedUrl;
   }, [apiBaseUrl]);
 
-  // Fetch inicial de datos
   const fetchData = useCallback(async () => {
     if (!user || !restaurantId) return;
     setLoading(true);
@@ -96,7 +94,6 @@ const MenuEditor = ({ restaurantId }) => {
     }
   }, [restaurantId, user, buildImageUrl]);
 
-  // Guardar secciones en el backend
   const saveSections = useCallback(
     async (updatedSections) => {
       try {
@@ -119,12 +116,10 @@ const MenuEditor = ({ restaurantId }) => {
     [restaurantId, restaurantName, colors, logo, planId]
   );
 
-  // Cargar datos al montar
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // Actualizar en tiempo real con WebSocket
   useEffect(() => {
     if (menuUpdate && isConnected) {
       toast.info("Menú actualizado en tiempo real");
@@ -132,7 +127,6 @@ const MenuEditor = ({ restaurantId }) => {
     }
   }, [menuUpdate, isConnected, fetchData]);
 
-  // Guardar configuración
   const handleSaveConfig = async () => {
     try {
       await api.put(`/restaurantes/${restaurantId}`, {
@@ -153,7 +147,6 @@ const MenuEditor = ({ restaurantId }) => {
     }
   };
 
-  // Subir logo con compresión
   const handleLogoUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -163,7 +156,6 @@ const MenuEditor = ({ restaurantId }) => {
     }
     setUploading(true);
     try {
-      // Comprimir la imagen antes de subirla
       new Compressor(file, {
         quality: 0.6,
         maxWidth: 800,
@@ -174,9 +166,11 @@ const MenuEditor = ({ restaurantId }) => {
           const response = await api.post(`/restaurantes/${restaurantId}/upload-logo`, formData, {
             headers: { "Content-Type": "multipart/form-data" },
           });
-          const logoUrl = buildImageUrl(response.data.logoUrl);
-          console.log("[MenuEditor] Logo URL recibida del backend:", logoUrl);
-          setLogo(logoUrl);
+          const logoUrl = response.data.logoUrl;
+          console.log("[MenuEditor] Logo URL devuelta por el backend:", logoUrl);
+          const processedLogoUrl = buildImageUrl(logoUrl);
+          console.log("[MenuEditor] Logo URL procesada:", processedLogoUrl);
+          setLogo(processedLogoUrl);
           toast.success("Logo subido con éxito.");
           await handleSaveConfig();
           setUploading(false);
@@ -189,12 +183,11 @@ const MenuEditor = ({ restaurantId }) => {
       });
     } catch (error) {
       console.error("[MenuEditor] Error al subir logo:", error.response?.data || error.message);
-      toast.error("Error al subir el logo.");
+      toast.error(`Error al subir el logo: ${error.response?.data?.message || error.message}`);
       setUploading(false);
     }
   };
 
-  // Cambiar plantilla
   const handleTemplateChange = (e) => {
     const type = e.target.value;
     const template = templates.find((t) => t.type === type) || templates[0];
@@ -211,7 +204,6 @@ const MenuEditor = ({ restaurantId }) => {
     );
   };
 
-  // Agregar o actualizar ítem
   const handleAddOrUpdateItem = async (e) => {
     e.preventDefault();
     if (!newItem.name || !newItem.price || !newItem.category) {
@@ -243,7 +235,6 @@ const MenuEditor = ({ restaurantId }) => {
     }
   };
 
-  // Subir imagen o modelo 3D con compresión
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return toast.error("No se seleccionó ningún archivo.");
@@ -255,7 +246,6 @@ const MenuEditor = ({ restaurantId }) => {
     setUploading(true);
     try {
       if (!is3DModel) {
-        // Comprimir imágenes, pero no modelos 3D
         new Compressor(file, {
           quality: 0.6,
           maxWidth: 800,
@@ -280,7 +270,6 @@ const MenuEditor = ({ restaurantId }) => {
           },
         });
       } else {
-        // Subir modelos 3D sin compresión
         const formData = new FormData();
         formData.append("file", file);
         const response = await api.post(`/menu/${restaurantId}/upload`, formData, {
@@ -295,12 +284,11 @@ const MenuEditor = ({ restaurantId }) => {
       }
     } catch (error) {
       console.error("[MenuEditor] Error al subir archivo:", error.response?.data || error.message);
-      toast.error("Error al subir el archivo.");
+      toast.error(`Error al subir el archivo: ${error.response?.data?.message || error.message}`);
       setUploading(false);
     }
   };
 
-  // Eliminar ítem
   const handleDeleteItem = async (id) => {
     if (!window.confirm("¿Seguro que quieres eliminar este ítem?")) return;
     try {
@@ -316,7 +304,6 @@ const MenuEditor = ({ restaurantId }) => {
     }
   };
 
-  // Renombrar sección
   const handleRenameSection = useCallback(
     (oldKey, newKey) => {
       if (!newKey.trim()) return toast.error("El nombre de la sección no puede estar vacío.");
@@ -334,7 +321,6 @@ const MenuEditor = ({ restaurantId }) => {
     [menuSections, saveSections]
   );
 
-  // Eliminar sección
   const handleDeleteSection = useCallback(
     (key) => {
       if (!window.confirm("¿Seguro que quieres eliminar esta sección?")) return;
@@ -346,7 +332,6 @@ const MenuEditor = ({ restaurantId }) => {
     [menuSections, saveSections]
   );
 
-  // Agregar sección
   const handleAddSection = useCallback(
     (newName) => {
       if (!newName.trim()) return toast.error("Ingrese un nombre para la nueva sección.");
@@ -359,7 +344,6 @@ const MenuEditor = ({ restaurantId }) => {
     [menuSections, saveSections]
   );
 
-  // Descargar QR
   const handleDownloadQR = async () => {
     if (!qrRef.current) return;
     try {
@@ -375,7 +359,6 @@ const MenuEditor = ({ restaurantId }) => {
     }
   };
 
-  // Memoizar las secciones filtradas para mejorar el rendimiento
   const filteredSections = useMemo(() => {
     return Object.entries(menuSections).map(([section]) => ({
       section,
@@ -439,7 +422,8 @@ const MenuEditor = ({ restaurantId }) => {
                   alt="Logo"
                   className="mt-2 w-16 h-16 rounded-full object-cover mx-auto shadow-sm"
                   onError={(e) => {
-                    console.error("[MenuEditor] Error al cargar el logo. URL intentada:", e.target.src);
+                    console.error("[MenuEditor] Error al cargar el logo:", e.target.src);
+                    e.target.src = "/placeholder-image.png"; // Fallback
                   }}
                 />
               )}
@@ -512,10 +496,8 @@ const MenuEditor = ({ restaurantId }) => {
                     alt="Logo"
                     className="w-20 h-20 rounded-full mx-auto mb-2 shadow-md"
                     onError={(e) => {
-                      console.error(
-                        "[MenuEditor] Error al cargar el logo en vista previa. URL intentada:",
-                        e.target.src
-                      );
+                      console.error("[MenuEditor] Error al cargar el logo en vista previa:", e.target.src);
+                      e.target.src = "/placeholder-image.png";
                     }}
                   />
                 )}
@@ -549,10 +531,7 @@ const MenuEditor = ({ restaurantId }) => {
                                 alt={item.name}
                                 className="w-16 h-16 rounded-md object-cover"
                                 onError={(e) => {
-                                  console.error(
-                                    "[MenuEditor] Error al cargar imagen en vista previa. URL intentada:",
-                                    e.target.src
-                                  );
+                                  console.error("[MenuEditor] Error al cargar imagen:", e.target.src);
                                   e.target.src = "/placeholder-image.png";
                                 }}
                               />
@@ -752,10 +731,7 @@ const MenuEditor = ({ restaurantId }) => {
                                   alt={item.name}
                                   className="w-16 h-16 rounded-md object-cover"
                                   onError={(e) => {
-                                    console.error(
-                                      "[MenuEditor] Error al cargar imagen. URL intentada:",
-                                      e.target.src
-                                    );
+                                    console.error("[MenuEditor] Error al cargar imagen:", e.target.src);
                                     e.target.src = "/placeholder-image.png";
                                   }}
                                 />
