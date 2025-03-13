@@ -46,14 +46,28 @@ const MenuEditor = ({ restaurantId }) => {
 
   const apiBaseUrl = useMemo(() => import.meta.env.VITE_API_URL, []);
 
-  const buildImageUrl = useCallback((url) => {
-    if (!url) return null;
-    if (url.startsWith("http")) return url;
-    const baseUrl = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
-    const processedUrl = `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
-    console.log("[MenuEditor] URL procesada:", processedUrl);
-    return processedUrl;
-  }, [apiBaseUrl]);
+  // Función para validar si una URL es accesible
+  const validateUrl = useCallback(async (url) => {
+    try {
+      const response = await fetch(url, { method: "HEAD" });
+      return response.ok;
+    } catch (error) {
+      console.error(`[MenuEditor] Error al validar URL ${url}:`, error.message);
+      return false;
+    }
+  }, []);
+
+  const buildImageUrl = useCallback(
+    (url) => {
+      if (!url) return null;
+      if (url.startsWith("http")) return url;
+      const baseUrl = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
+      const processedUrl = `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+      console.log("[MenuEditor] URL procesada:", processedUrl);
+      return processedUrl;
+    },
+    [apiBaseUrl]
+  );
 
   const fetchData = useCallback(async () => {
     if (!user || !restaurantId) return;
@@ -72,7 +86,13 @@ const MenuEditor = ({ restaurantId }) => {
       setSelectedTemplate(template);
       setColors(restaurantData.colors || template.default_colors);
       setRestaurantName(restaurantData.name || "Mi Restaurante");
-      setLogo(buildImageUrl(restaurantData.logo_url));
+      const logoUrl = buildImageUrl(restaurantData.logo_url);
+      if (logoUrl && (await validateUrl(logoUrl))) {
+        setLogo(logoUrl);
+      } else {
+        setLogo(null);
+        console.warn("[MenuEditor] Logo URL no válida o inaccesible:", logoUrl);
+      }
       setPlanId(restaurantData.plan_id || null);
       const loadedSections =
         restaurantData.sections ||
@@ -80,11 +100,21 @@ const MenuEditor = ({ restaurantId }) => {
       setMenuSections(loadedSections);
 
       const menuResponse = await api.get(`/menu/${restaurantId}`);
-      const items = (menuResponse.data.items || []).map((item) => ({
-        ...item,
-        imageUrl: buildImageUrl(item.image_url),
-      }));
-      setMenuItems(items);
+      const items = (menuResponse.data.items || []).map((item) => {
+        const imageUrl = buildImageUrl(item.image_url);
+        return { ...item, imageUrl };
+      });
+      // Validar URLs de imágenes antes de establecer el estado
+      const validatedItems = await Promise.all(
+        items.map(async (item) => {
+          if (item.imageUrl && !(await validateUrl(item.imageUrl))) {
+            console.warn("[MenuEditor] Imagen no válida o inaccesible:", item.imageUrl);
+            return { ...item, imageUrl: null };
+          }
+          return item;
+        })
+      );
+      setMenuItems(validatedItems);
     } catch (error) {
       console.error("[MenuEditor] Error al cargar datos:", error.response?.data || error.message);
       toast.error("Error al cargar los datos del menú.");
@@ -92,7 +122,7 @@ const MenuEditor = ({ restaurantId }) => {
     } finally {
       setLoading(false);
     }
-  }, [restaurantId, user, buildImageUrl]);
+  }, [restaurantId, user, buildImageUrl, validateUrl]);
 
   const saveSections = useCallback(
     async (updatedSections) => {
@@ -169,10 +199,13 @@ const MenuEditor = ({ restaurantId }) => {
           const logoUrl = response.data.logoUrl;
           console.log("[MenuEditor] Logo URL devuelta por el backend:", logoUrl);
           const processedLogoUrl = buildImageUrl(logoUrl);
-          console.log("[MenuEditor] Logo URL procesada:", processedLogoUrl);
-          setLogo(processedLogoUrl);
-          toast.success("Logo subido con éxito.");
-          await handleSaveConfig();
+          if (await validateUrl(processedLogoUrl)) {
+            setLogo(processedLogoUrl);
+            toast.success("Logo subido con éxito.");
+            await handleSaveConfig();
+          } else {
+            toast.error("El logo subido no es accesible. Verifica el backend.");
+          }
           setUploading(false);
         },
         error: (err) => {
@@ -256,11 +289,13 @@ const MenuEditor = ({ restaurantId }) => {
             const response = await api.post(`/menu/${restaurantId}/upload`, formData, {
               headers: { "Content-Type": "multipart/form-data" },
             });
-            setNewItem((prev) => ({
-              ...prev,
-              imageUrl: buildImageUrl(response.data.fileUrl),
-            }));
-            toast.success("Archivo subido con éxito.");
+            const imageUrl = buildImageUrl(response.data.fileUrl);
+            if (await validateUrl(imageUrl)) {
+              setNewItem((prev) => ({ ...prev, imageUrl }));
+              toast.success("Archivo subido con éxito.");
+            } else {
+              toast.error("El archivo subido no es accesible. Verifica el backend.");
+            }
             setUploading(false);
           },
           error: (err) => {
@@ -275,11 +310,13 @@ const MenuEditor = ({ restaurantId }) => {
         const response = await api.post(`/menu/${restaurantId}/upload`, formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
-        setNewItem((prev) => ({
-          ...prev,
-          imageUrl: buildImageUrl(response.data.fileUrl),
-        }));
-        toast.success("Archivo subido con éxito.");
+        const imageUrl = buildImageUrl(response.data.fileUrl);
+        if (await validateUrl(imageUrl)) {
+          setNewItem((prev) => ({ ...prev, imageUrl }));
+          toast.success("Archivo subido con éxito.");
+        } else {
+          toast.error("El archivo subido no es accesible. Verifica el backend.");
+        }
         setUploading(false);
       }
     } catch (error) {
@@ -359,12 +396,42 @@ const MenuEditor = ({ restaurantId }) => {
     }
   };
 
+  // Optimizar filteredSections con useMemo
   const filteredSections = useMemo(() => {
     return Object.entries(menuSections).map(([section]) => ({
       section,
       items: menuItems.filter((item) => item.category === section),
     }));
   }, [menuSections, menuItems]);
+
+  // Componente para manejar la visualización de imágenes y modelos 3D
+  const MediaViewer = ({ item }) => {
+    if (!item.imageUrl) {
+      return (
+        <span className="w-16 h-16 flex items-center justify-center bg-gray-200 rounded-md text-xs text-gray-500">
+          Sin Imagen
+        </span>
+      );
+    }
+    if (item.imageUrl.endsWith(".glb")) {
+      return (
+        <div className="w-16 h-16">
+          <ThreeDViewer modelUrl={item.imageUrl} autoRotate fallback={<div>Modelo no disponible</div>} />
+        </div>
+      );
+    }
+    return (
+      <img
+        src={item.imageUrl}
+        alt={item.name}
+        className="w-16 h-16 rounded-md object-cover"
+        onError={(e) => {
+          console.error("[MenuEditor] Error al cargar imagen:", e.target.src);
+          e.target.src = "/placeholder-image.png";
+        }}
+      />
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-6 font-sans">
@@ -520,27 +587,7 @@ const MenuEditor = ({ restaurantId }) => {
                           key={item.id || item.name}
                           className="flex items-center gap-4 p-3 bg-white rounded-md shadow-sm border border-gray-100"
                         >
-                          {item.imageUrl ? (
-                            item.imageUrl.endsWith(".glb") ? (
-                              <div className="w-16 h-16">
-                                <ThreeDViewer modelUrl={item.imageUrl} autoRotate />
-                              </div>
-                            ) : (
-                              <img
-                                src={item.imageUrl}
-                                alt={item.name}
-                                className="w-16 h-16 rounded-md object-cover"
-                                onError={(e) => {
-                                  console.error("[MenuEditor] Error al cargar imagen:", e.target.src);
-                                  e.target.src = "/placeholder-image.png";
-                                }}
-                              />
-                            )
-                          ) : (
-                            <span className="w-16 h-16 flex items-center justify-center bg-gray-200 rounded-md text-xs text-gray-500">
-                              Sin Imagen
-                            </span>
-                          )}
+                          <MediaViewer item={item} />
                           <div className="flex-1">
                             <p className="text-lg font-semibold text-gray-800">{item.name}</p>
                             <p className="text-sm text-gray-600">{item.description}</p>
@@ -720,27 +767,7 @@ const MenuEditor = ({ restaurantId }) => {
                             exit={{ opacity: 0, y: -10 }}
                             className="flex items-center gap-4 p-3 bg-white rounded-md shadow-sm border border-gray-100"
                           >
-                            {item.imageUrl ? (
-                              item.imageUrl.endsWith(".glb") ? (
-                                <div className="w-16 h-16">
-                                  <ThreeDViewer modelUrl={item.imageUrl} autoRotate />
-                                </div>
-                              ) : (
-                                <img
-                                  src={item.imageUrl}
-                                  alt={item.name}
-                                  className="w-16 h-16 rounded-md object-cover"
-                                  onError={(e) => {
-                                    console.error("[MenuEditor] Error al cargar imagen:", e.target.src);
-                                    e.target.src = "/placeholder-image.png";
-                                  }}
-                                />
-                              )
-                            ) : (
-                              <span className="w-16 h-16 flex items-center justify-center bg-gray-200 rounded-md text-xs text-gray-500">
-                                Sin Imagen
-                              </span>
-                            )}
+                            <MediaViewer item={item} />
                             <div className="flex-1">
                               <p className="text-lg font-semibold text-gray-800">{item.name}</p>
                               <p className="text-sm text-gray-600">{item.description}</p>
