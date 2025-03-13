@@ -7,11 +7,7 @@ const DashboardHome = () => {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const { socket, isConnected, error: socketError } = useSocket() || {
-    socket: null,
-    isConnected: false,
-    error: null,
-  };
+  const { socket, isConnected, menuUpdate } = useSocket();
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
@@ -20,7 +16,7 @@ const DashboardHome = () => {
       setStats(response.data || { totalPlatos: 0, totalRestaurantes: 0 });
       setError(null);
     } catch (err) {
-      console.error("Error al obtener estadísticas:", err);
+      console.error("Error al obtener estadísticas:", err.message);
       setError("No se pudieron cargar las estadísticas. Intenta de nuevo más tarde.");
     } finally {
       setLoading(false);
@@ -32,17 +28,26 @@ const DashboardHome = () => {
   }, [fetchStats]);
 
   useEffect(() => {
-    if (!isConnected || !socket) return;
+    if (!socket || !isConnected) return;
 
-    const handleMenuUpdate = () => {
-      fetchStats();
+    const handleMenuUpdate = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === "menu-changed") {
+          console.log("[WebSocket] Menú actualizado:", message.data);
+          fetchStats(); // Actualizar estadísticas cuando el menú cambia
+        }
+      } catch (err) {
+        console.error("[WebSocket] Error al procesar mensaje:", err.message);
+      }
     };
 
-    socket.on("menu-updated", handleMenuUpdate);
-    return () => socket.off("menu-updated", handleMenuUpdate);
-  }, [socket, isConnected, fetchStats]);
+    socket.addEventListener("message", handleMenuUpdate);
 
-  if (socketError) return <div className="text-red-600">Error de conexión: {socketError}</div>;
+    return () => {
+      socket.removeEventListener("message", handleMenuUpdate);
+    };
+  }, [socket, isConnected, fetchStats]);
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -65,9 +70,7 @@ const DashboardHome = () => {
           </div>
           <div className="bg-white p-6 rounded shadow">
             <h3 className="text-xl font-semibold">Estado del Socket</h3>
-            <p className="text-green-600">
-              {socket && socket.id ? `Conectado (ID: ${socket.id})` : "Desconectado"}
-            </p>
+            <p className="text-green-600">{isConnected ? "Conectado" : "Desconectado"}</p>
           </div>
         </div>
       )}

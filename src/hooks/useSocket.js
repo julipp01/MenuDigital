@@ -67,20 +67,7 @@ const useSocket = (url = "wss://menudigital-backend-production.up.railway.app") 
 
   useEffect(() => {
     connectWebSocket();
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && !socket) {
-        console.log("🔄 Pestaña visible, intentando reconectar WebSocket...");
-        connectWebSocket();
-      } else if (document.visibilityState === "hidden" && socket) {
-        console.log("🔹 Pestaña oculta, manteniendo conexión viva...");
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (socket) {
         console.log("🔹 Cerrando conexión WebSocket al desmontar");
         socket.close();
