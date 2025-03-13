@@ -14,7 +14,7 @@ const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || window.location.origin
 
 const MenuEditor = ({ restaurantId }) => {
   const { user } = useAuth();
-  const { socket, isConnected, menuUpdate } = useSocket();
+  const { socket, isConnected } = useSocket(); // Usamos solo lo necesario de useSocket
   const [menuItems, setMenuItems] = useState([]);
   const [newItem, setNewItem] = useState({
     name: "",
@@ -42,37 +42,37 @@ const MenuEditor = ({ restaurantId }) => {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const qrRef = useRef(null);
-  const urlCache = useRef(new Map()); // Caché para validación de URLs
+  const urlCache = useRef(new Map());
 
-  const apiBaseUrl = useMemo(() => import.meta.env.VITE_API_URL, []);
+  const apiBaseUrl = useMemo(() => import.meta.env.VITE_API_URL || "", []);
 
   // Validar URLs con caché
-  const validateUrl = useCallback(async (url) => {
-    if (!url) return false;
-    if (urlCache.current.has(url)) return urlCache.current.get(url);
-    try {
-      const response = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(5000) });
-      const isValid = response.ok;
-      urlCache.current.set(url, isValid);
-      console.log(`[MenuEditor] URL procesada: ${url} - Válida: ${isValid}`);
-      return isValid;
-    } catch (error) {
-      console.error(`[MenuEditor] Error al validar URL ${url}:`, error.message);
-      urlCache.current.set(url, false);
-      return false;
-    }
-  }, []);
-
-  const buildImageUrl = useCallback(
-    (url) => {
-      if (!url) return null;
-      if (url.startsWith("http")) return url;
-      const baseUrl = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
-      return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+  const validateUrl = useCallback(
+    async (url) => {
+      if (!url) return false;
+      if (urlCache.current.has(url)) return urlCache.current.get(url);
+      try {
+        const response = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(5000) });
+        const isValid = response.ok;
+        urlCache.current.set(url, isValid);
+        console.log(`[MenuEditor] URL procesada: ${url} - Válida: ${isValid}`);
+        return isValid;
+      } catch (error) {
+        console.error(`[MenuEditor] Error al validar URL ${url}:`, error.message);
+        urlCache.current.set(url, false);
+        return false;
+      }
     },
+    []
+  );
+
+  // Construir URL (maneja URLs de Cloudinary directamente)
+  const buildImageUrl = useCallback(
+    (url) => (url && url.startsWith("http") ? url : `${apiBaseUrl}${url || ""}`.replace(/\/+$/, "")),
     [apiBaseUrl]
   );
 
+  // Fetch inicial de datos
   const fetchData = useCallback(async () => {
     if (!user || !restaurantId) return;
     setLoading(true);
@@ -87,11 +87,9 @@ const MenuEditor = ({ restaurantId }) => {
       setTemplates(templatesData);
 
       const restaurantData = restaurantResponse.data[0] || {};
-      const template =
-        templatesData.find((t) => t.id === restaurantData.template_id) || templatesData[0];
-      if (!template) throw new Error("No se encontró plantilla válida");
+      const template = templatesData.find((t) => t.id === restaurantData.template_id) || templatesData[0] || {};
       setSelectedTemplate(template);
-      setColors(restaurantData.colors || template.default_colors);
+      setColors(restaurantData.colors || template.default_colors || { primary: "#FF9800", secondary: "#4CAF50" });
       setRestaurantName(restaurantData.name || "Mi Restaurante");
 
       const logoUrl = buildImageUrl(restaurantData.logo_url);
@@ -119,44 +117,31 @@ const MenuEditor = ({ restaurantId }) => {
       setMenuItems(validatedItems);
     } catch (error) {
       console.error("[MenuEditor] Error al cargar datos:", error.message);
-      toast.error(`Error al cargar datos: ${error.message}`);
+      toast.error(`Error al cargar datos: ${error.message || "Intenta de nuevo"}`);
       setMenuSections({ "Platos Principales": [], Postres: [], Bebidas: [] });
     } finally {
       setLoading(false);
     }
   }, [restaurantId, user, buildImageUrl, validateUrl]);
 
-  const saveSections = useCallback(
-    async (updatedSections) => {
-      try {
-        await api.put(`/restaurantes/${restaurantId}`, {
-          name: restaurantName,
-          colors,
-          logo,
-          sections: updatedSections,
-          plan_id: planId,
-        });
-        toast.success("Secciones actualizadas correctamente.");
-      } catch (error) {
-        console.error("[MenuEditor] Error al actualizar secciones:", error.message);
-        toast.error("No se pudieron actualizar las secciones.");
-      }
-    },
-    [restaurantId, restaurantName, colors, logo, planId]
-  );
-
+  // Efectos
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
   useEffect(() => {
-    if (menuUpdate && isConnected) {
-      toast.info("Menú actualizado en tiempo real");
-      fetchData();
+    if (isConnected && socket) {
+      const handleMenuUpdate = () => {
+        toast.info("Menú actualizado en tiempo real");
+        fetchData();
+      };
+      socket.addEventListener("message", handleMenuUpdate);
+      return () => socket.removeEventListener("message", handleMenuUpdate);
     }
-  }, [menuUpdate, isConnected, fetchData]);
+  }, [isConnected, socket, fetchData]);
 
-  const handleSaveConfig = useCallback(async () => {
+  // Funciones de guardado
+  const saveConfig = useCallback(async () => {
     try {
       await api.put(`/restaurantes/${restaurantId}`, {
         name: restaurantName,
@@ -173,71 +158,79 @@ const MenuEditor = ({ restaurantId }) => {
     }
   }, [restaurantId, restaurantName, colors, logo, menuSections, planId, fetchData]);
 
-  const handleLogoUpload = useCallback(
-    async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      if (!file.type.match(/image\/(jpeg|png)/)) {
-        toast.error("Solo se permiten imágenes JPEG o PNG.");
-        return;
+  const uploadFile = useCallback(
+    async (file, endpoint, fieldName = "file") => {
+      if (!file) return null;
+      const isImage = file.type.match(/image\/(jpeg|png)/);
+      const is3DModel = file.type === "model/gltf-binary" || file.name.endsWith(".glb");
+      if (!isImage && !is3DModel) {
+        toast.error("Solo se permiten imágenes JPEG, PNG o modelos GLB.");
+        return null;
       }
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("El archivo excede el límite de 5MB.");
-        return;
+      if (file.size > (is3DModel ? 10 : 5) * 1024 * 1024) {
+        toast.error(`El archivo excede el límite de ${is3DModel ? 10 : 5}MB.`);
+        return null;
       }
+
       setUploading(true);
       try {
-        const compressedFile = await new Promise((resolve, reject) => {
-          new Compressor(file, {
-            quality: 0.6,
-            maxWidth: 800,
-            maxHeight: 800,
-            success: (result) => resolve(new File([result], file.name, { type: result.type })),
-            error: reject,
-          });
-        });
+        const compressedFile = isImage
+          ? await new Promise((resolve, reject) => {
+              new Compressor(file, {
+                quality: 0.6,
+                maxWidth: 800,
+                maxHeight: 800,
+                success: (result) => resolve(new File([result], file.name, { type: result.type })),
+                error: reject,
+              });
+            })
+          : file;
 
         const formData = new FormData();
-        formData.append("logo", compressedFile);
-        const response = await api.post(`/restaurantes/${restaurantId}/upload-logo`, formData, {
+        formData.append(fieldName, compressedFile);
+        const response = await api.post(`${endpoint}`, formData, {
           headers: { "Content-Type": "multipart/form-data" },
           timeout: 20000,
         });
 
-        const logoUrl = buildImageUrl(response.data.logoUrl);
-        if (await validateUrl(logoUrl)) {
-          setLogo(logoUrl);
-          await handleSaveConfig();
-          toast.success("Logo subido con éxito.");
-        } else {
-          toast.error("El logo subido no es accesible.");
+        const fileUrl = buildImageUrl(response.data.fileUrl || response.data.logoUrl);
+        if (await validateUrl(fileUrl)) {
+          toast.success(`${fieldName === "logo" ? "Logo" : "Archivo"} subido con éxito.`);
+          return fileUrl;
         }
+        throw new Error("El archivo subido no es accesible.");
       } catch (error) {
-        console.error("[MenuEditor] Error al subir logo:", error.message);
-        toast.error(`Error al subir el logo: ${error.message}`);
+        console.error(`[MenuEditor] Error al subir ${fieldName}:`, error.message);
+        toast.error(`Error al subir ${fieldName}: ${error.message}`);
+        return null;
       } finally {
         setUploading(false);
       }
     },
-    [restaurantId, buildImageUrl, validateUrl, handleSaveConfig]
+    [buildImageUrl, validateUrl]
   );
 
-  const handleTemplateChange = useCallback(
-    (e) => {
-      const type = e.target.value;
-      const template = templates.find((t) => t.type === type) || templates[0];
-      if (!template) return;
-      setSelectedTemplate(template);
-      setColors(template.default_colors);
-      const newSections = template.fields || { "Platos Principales": [], Postres: [], Bebidas: [] };
-      setMenuSections(newSections);
-      setMenuItems(
-        Object.entries(newSections).flatMap(([category, items]) =>
-          items.map((item) => ({ ...item, category }))
-        )
-      );
+  const handleLogoUpload = useCallback(
+    async (e) => {
+      const file = e.target.files[0];
+      const newLogoUrl = await uploadFile(file, `/restaurantes/${restaurantId}/upload-logo`, "logo");
+      if (newLogoUrl) {
+        setLogo(newLogoUrl);
+        await saveConfig();
+      }
     },
-    [templates]
+    [restaurantId, uploadFile, saveConfig]
+  );
+
+  const handleImageUpload = useCallback(
+    async (e) => {
+      const file = e.target.files[0];
+      const newImageUrl = await uploadFile(file, `/menu/${restaurantId}/upload`);
+      if (newImageUrl) {
+        setNewItem((prev) => ({ ...prev, imageUrl: newImageUrl }));
+      }
+    },
+    [restaurantId, uploadFile]
   );
 
   const handleAddOrUpdateItem = useCallback(
@@ -264,55 +257,6 @@ const MenuEditor = ({ restaurantId }) => {
       }
     },
     [editingItem, newItem, restaurantId, fetchData, socket]
-  );
-
-  const handleImageUpload = useCallback(
-    async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const is3DModel = file.type === "model/gltf-binary" || file.name.endsWith(".glb");
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error("El archivo excede el límite de 10MB.");
-        return;
-      }
-      setUploading(true);
-      try {
-        const formData = new FormData();
-        if (!is3DModel) {
-          const compressedFile = await new Promise((resolve, reject) => {
-            new Compressor(file, {
-              quality: 0.6,
-              maxWidth: 800,
-              maxHeight: 800,
-              success: (result) => resolve(new File([result], file.name, { type: result.type })),
-              error: reject,
-            });
-          });
-          formData.append("file", compressedFile);
-        } else {
-          formData.append("file", file);
-        }
-
-        const response = await api.post(`/menu/${restaurantId}/upload`, formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-          timeout: 20000,
-        });
-
-        const imageUrl = buildImageUrl(response.data.fileUrl);
-        if (await validateUrl(imageUrl)) {
-          setNewItem((prev) => ({ ...prev, imageUrl }));
-          toast.success("Archivo subido con éxito.");
-        } else {
-          toast.error("El archivo subido no es accesible.");
-        }
-      } catch (error) {
-        console.error("[MenuEditor] Error al subir archivo:", error.message);
-        toast.error(`Error al subir el archivo: ${error.message}`);
-      } finally {
-        setUploading(false);
-      }
-    },
-    [restaurantId, buildImageUrl, validateUrl]
   );
 
   const handleDeleteItem = useCallback(
@@ -344,11 +288,11 @@ const MenuEditor = ({ restaurantId }) => {
         ])
       );
       setMenuSections(updated);
-      saveSections(updated);
+      saveConfig();
       setEditingSection(null);
       setNewSectionName("");
     },
-    [menuSections, saveSections]
+    [menuSections, saveConfig]
   );
 
   const handleDeleteSection = useCallback(
@@ -357,9 +301,9 @@ const MenuEditor = ({ restaurantId }) => {
       const updated = { ...menuSections };
       delete updated[key];
       setMenuSections(updated);
-      saveSections(updated);
+      saveConfig();
     },
-    [menuSections, saveSections]
+    [menuSections, saveConfig]
   );
 
   const handleAddSection = useCallback(
@@ -368,10 +312,10 @@ const MenuEditor = ({ restaurantId }) => {
       if (menuSections[newName]) return toast.error("La sección ya existe.");
       const updated = { ...menuSections, [newName]: [] };
       setMenuSections(updated);
-      saveSections(updated);
+      saveConfig();
       setNewSectionName("");
     },
-    [menuSections, saveSections]
+    [menuSections, saveConfig]
   );
 
   const handleDownloadQR = useCallback(async () => {
@@ -396,36 +340,37 @@ const MenuEditor = ({ restaurantId }) => {
     }));
   }, [menuSections, menuItems]);
 
-  const MediaViewer = ({ item }) => {
-    if (!item.imageUrl) {
+  const MediaViewer = useCallback(
+    ({ item }) => {
+      if (!item.imageUrl) {
+        return (
+          <span className="w-16 h-16 flex items-center justify-center bg-gray-200 rounded-md text-xs text-gray-500">
+            Sin Imagen
+          </span>
+        );
+      }
+      if (item.imageUrl.endsWith(".glb")) {
+        return (
+          <div className="w-16 h-16">
+            <ThreeDViewer
+              modelUrl={item.imageUrl}
+              autoRotate
+              fallback={<div>Modelo no disponible</div>}
+            />
+          </div>
+        );
+      }
       return (
-        <span className="w-16 h-16 flex items-center justify-center bg-gray-200 rounded-md text-xs text-gray-500">
-          Sin Imagen
-        </span>
+        <img
+          src={item.imageUrl}
+          alt={item.name}
+          className="w-16 h-16 rounded-md object-cover"
+          onError={(e) => (e.target.src = "/placeholder-image.png")}
+        />
       );
-    }
-    if (item.imageUrl.endsWith(".glb")) {
-      return (
-        <div className="w-16 h-16">
-          <ThreeDViewer
-            modelUrl={item.imageUrl}
-            autoRotate
-            fallback={<div>Modelo no disponible</div>}
-          />
-        </div>
-      );
-    }
-    return (
-      <img
-        src={item.imageUrl}
-        alt={item.name}
-        className="w-16 h-16 rounded-md object-cover"
-        onError={(e) => {
-          e.target.src = "/placeholder-image.png";
-        }}
-      />
-    );
-  };
+    },
+    []
+  );
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-6 font-sans">
@@ -521,7 +466,7 @@ const MenuEditor = ({ restaurantId }) => {
               ))}
             </select>
             <button
-              onClick={handleSaveConfig}
+              onClick={saveConfig}
               className="w-full py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
               disabled={loading || uploading}
             >
@@ -603,7 +548,7 @@ const MenuEditor = ({ restaurantId }) => {
                   type="text"
                   name="name"
                   value={newItem.name}
-                  onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, name: e.target.value }))}
                   placeholder="Nombre del Plato"
                   className="p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-400"
                   required
@@ -612,7 +557,7 @@ const MenuEditor = ({ restaurantId }) => {
                   type="number"
                   name="price"
                   value={newItem.price}
-                  onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, price: e.target.value }))}
                   placeholder="S/."
                   className="p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-400"
                   step="0.01"
@@ -622,7 +567,7 @@ const MenuEditor = ({ restaurantId }) => {
                 <select
                   name="category"
                   value={newItem.category}
-                  onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, category: e.target.value }))}
                   className="p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-400"
                   required
                 >
@@ -636,7 +581,7 @@ const MenuEditor = ({ restaurantId }) => {
                   type="text"
                   name="description"
                   value={newItem.description}
-                  onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, description: e.target.value }))}
                   placeholder="Descripción"
                   className="p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 sm:col-span-3"
                 />
