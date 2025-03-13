@@ -14,7 +14,7 @@ const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || window.location.origin
 
 const MenuEditor = ({ restaurantId }) => {
   const { user } = useAuth();
-  const { socket, isConnected } = useSocket(); // Usamos solo lo necesario de useSocket
+  const { socket, isConnected } = useSocket();
   const [menuItems, setMenuItems] = useState([]);
   const [newItem, setNewItem] = useState({
     name: "",
@@ -123,6 +123,305 @@ const MenuEditor = ({ restaurantId }) => {
       setLoading(false);
     }
   }, [restaurantId, user, buildImageUrl, validateUrl]);
+
+  // Manejar cambio de plantilla
+  const handleTemplateChange = useCallback(
+    (e) => {
+      const type = e.target.value;
+      const template = templates.find((t) => t.type === type) || templates[0];
+      if (!template) return;
+      setSelectedTemplate(template);
+      setColors(template.default_colors || { primary: "#FF9800", secondary: "#4CAF50" });
+      const newSections = template.fields || { "Platos Principales": [], Postres: [], Bebidas: [] };
+      setMenuSections(newSections);
+      setMenuItems(
+        Object.entries(newSections).flatMap(([category, items]) =>
+          items.map((item) => ({ ...item, category }))
+        )
+      );
+    },
+    [templates]
+  );
+
+  // Efectos
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    if (isConnected && socket) {
+      const handleMenuUpdate = () => {
+        toast.info("Menú actualizado en tiempo real");
+        fetchData();
+      };
+      socket.addEventListener("message", handleMenuUpdate);
+      return () => socket.removeEventListener("message", handleMenuUpdate);
+    }
+  }, [isConnected, socket, fetchData]);
+
+  // Funciones de guardado
+  const saveConfig = useCallback(async () => {
+    try {
+      await api.put(`/restaurantes/${restaurantId}`, {
+        name: restaurantName,
+        colors,
+        logo,
+        sections: menuSections,
+        plan_id: planId,
+      });
+      toast.success("Configuración guardada con éxito.");
+      await fetchData();
+    } catch (error) {
+      console.error("[MenuEditor] Error al guardar configuración:", error.message);
+      toast.error("No se pudo guardar la configuración.");
+    }
+  }, [restaurantId, restaurantName, colors, logo, menuSections, planId, fetchData]);
+
+  const uploadFile = useCallback(
+    async (file, endpoint, fieldName = "file") => {
+      if (!file) return null;
+      const isImage = file.type.match(/image\/(jpeg|png)/);
+      const is3DModel = file.type === "model/gltf-binary" || file.name.endsWith(".glb");
+      if (!isImage && !is3DModel) {
+        toast.error("Solo se permiten imágenes JPEG, PNG o modelos GLB.");
+        return null;
+      }
+      if (file.size > (is3DModel ? 10 : 5) * 1024 * 1024) {
+        toast.error(`El archivo excede el límite de ${is3DModel ? 10 : 5}MB.`);
+        return null;
+      }
+
+      setUploading(true);
+      try {
+        const compressedFile = isImage
+          ? await new Promise((resolve, reject) => {
+              new Compressor(file, {
+                quality: 0.6,
+                maxWidth: 800,
+                maxHeight: 800,
+                success: (result) => resolve(new File([result], file.name, { type: result.type })),
+                error: reject,
+              });
+            })
+          : file;
+
+        const formData = new FormData();
+        formData.append(fieldName, compressedFile);
+        const response = await api.post(`${endpoint}`, formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+          timeout: 20000,
+        });
+
+        const fileUrl = buildImageUrl(response.data.fileUrl || response.data.logoUrl);
+        if (await validateUrl(fileUrl)) {
+          toast.success(`${fieldName === "logo" ? "Logo" : "Archivo"} subido con éxito.`);
+          return fileUrl;
+        }
+        throw new Error("El archivo subido no es accesible.");
+      } catch (error) {
+        console.error(`[MenuEditor] Error al subir ${fieldName}:`, error.message);
+        toast.error(`Error al subir ${fieldName}: ${error.message}`);
+        return null;
+      } finally {
+        setUploading(false);
+      }
+    },
+    [buildImageUrl, validateUrl]
+  );
+
+  const handleLogoUpload = useCallback(
+    async (e) => {
+      const file = e.target.files[0];
+      const newLogoUrl = await uploadFile(file, `/restaurantes/${restaurantId}/upload-logo`, "logo");
+      if (newLogoUrl) {
+        setLogo(newLogoUrl);
+        await saveConfig();
+      }
+    },
+    [restaurantId, uploadFile, saveConfig]
+  );
+
+  const handleImageUpload = useCallback(
+    async (e) => {
+      const file = e.target.files[0];
+      const newImageUrl = await uploadFile(file, `/menu/${restaurantId}/upload`);
+      if (newImageUrl) {
+        setNewItem((prev) => ({ ...prev, imageUrl: newImageUrl }));
+      }
+    },
+    [restaurantId, uploadFile]
+  );
+
+  const handleAddOrUpdateItem = useCallback(
+    async (e) => {
+      e.preventDefault();
+      if (!newItem.name || !newItem.price || !newItem.category) {
+        toast.error("Faltan campos obligatorios.");
+        return;
+      }
+      const url = editingItem ? `/menu/${restaurantId}/${editingItem.id}` : `/menu/${restaurantId}`;
+      const method = editingItem ? "PUT" : "POST";
+      try {
+        await api.request({ method, url, data: newItem, timeout: 20000 });
+        setNewItem({ name: "", price: "", description: "", category: "Platos Principales", imageUrl: "" });
+        setEditingItem(null);
+        await fetchData();
+        toast.success(`Ítem ${editingItem ? "actualizado" : "agregado"} con éxito.`);
+        if (socket) {
+          socket.send(JSON.stringify({ type: "menu-updated", restaurantId, item: newItem }));
+        }
+      } Corrigiendo el error de `handleTemplateChange is not defined` y ajustando el backend para `/api/auth/verify`
+
+### **Solución para `MenuEditor.jsx`**
+
+#### **1. Agregar `handleTemplateChange` a `MenuEditor.jsx`**
+Voy a corregir el código de `MenuEditor.jsx` para incluir la función `handleTemplateChange`, que se encarga de manejar el cambio de plantilla en el formulario de configuración. Este es el código corregido:
+
+```jsx
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import api from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { motion, AnimatePresence } from "framer-motion";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import { QRCodeCanvas } from "qrcode.react";
+import { toPng } from "html-to-image";
+import Compressor from "compressorjs";
+import ThreeDViewer from "@/components/ThreeDViewer";
+import useSocket from "@/hooks/useSocket";
+
+const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || window.location.origin;
+
+const MenuEditor = ({ restaurantId }) => {
+  const { user } = useAuth();
+  const { socket, isConnected } = useSocket();
+  const [menuItems, setMenuItems] = useState([]);
+  const [newItem, setNewItem] = useState({
+    name: "",
+    price: "",
+    description: "",
+    category: "Platos Principales",
+    imageUrl: "",
+  });
+  const [editingItem, setEditingItem] = useState(null);
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [colors, setColors] = useState({ primary: "#FF9800", secondary: "#4CAF50" });
+  const [restaurantName, setRestaurantName] = useState("Mi Restaurante");
+  const [logo, setLogo] = useState(null);
+  const [menuSections, setMenuSections] = useState({
+    "Platos Principales": [],
+    Postres: [],
+    Bebidas: [],
+  });
+  const [planId, setPlanId] = useState(null);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [editingSection, setEditingSection] = useState(null);
+  const [newSectionName, setNewSectionName] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const qrRef = useRef(null);
+  const urlCache = useRef(new Map());
+
+  const apiBaseUrl = useMemo(() => import.meta.env.VITE_API_URL || "", []);
+
+  // Validar URLs con caché
+  const validateUrl = useCallback(
+    async (url) => {
+      if (!url) return false;
+      if (urlCache.current.has(url)) return urlCache.current.get(url);
+      try {
+        const response = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(5000) });
+        const isValid = response.ok;
+        urlCache.current.set(url, isValid);
+        console.log(`[MenuEditor] URL procesada: ${url} - Válida: ${isValid}`);
+        return isValid;
+      } catch (error) {
+        console.error(`[MenuEditor] Error al validar URL ${url}:`, error.message);
+        urlCache.current.set(url, false);
+        return false;
+      }
+    },
+    []
+  );
+
+  // Construir URL (maneja URLs de Cloudinary directamente)
+  const buildImageUrl = useCallback(
+    (url) => (url && url.startsWith("http") ? url : `${apiBaseUrl}${url || ""}`.replace(/\/+$/, "")),
+    [apiBaseUrl]
+  );
+
+  // Fetch inicial de datos
+  const fetchData = useCallback(async () => {
+    if (!user || !restaurantId) return;
+    setLoading(true);
+    try {
+      const [templateResponse, restaurantResponse, menuResponse] = await Promise.all([
+        api.get("/templates", { timeout: 20000 }),
+        api.get(`/restaurantes/${restaurantId}`, { timeout: 20000 }),
+        api.get(`/menu/${restaurantId}`, { timeout: 20000 }),
+      ]);
+
+      const templatesData = templateResponse.data || [];
+      setTemplates(templatesData);
+
+      const restaurantData = restaurantResponse.data[0] || {};
+      const template = templatesData.find((t) => t.id === restaurantData.template_id) || templatesData[0] || {};
+      setSelectedTemplate(template);
+      setColors(restaurantData.colors || template.default_colors || { primary: "#FF9800", secondary: "#4CAF50" });
+      setRestaurantName(restaurantData.name || "Mi Restaurante");
+
+      const logoUrl = buildImageUrl(restaurantData.logo_url);
+      setLogo(logoUrl && (await validateUrl(logoUrl)) ? logoUrl : null);
+
+      setPlanId(restaurantData.plan_id || null);
+      setMenuSections(
+        restaurantData.sections || template.fields || {
+          "Platos Principales": [],
+          Postres: [],
+          Bebidas: [],
+        }
+      );
+
+      const items = (menuResponse.data.items || []).map((item) => ({
+        ...item,
+        imageUrl: buildImageUrl(item.image_url),
+      }));
+      const validatedItems = await Promise.all(
+        items.map(async (item) => ({
+          ...item,
+          imageUrl: item.imageUrl && (await validateUrl(item.imageUrl)) ? item.imageUrl : null,
+        }))
+      );
+      setMenuItems(validatedItems);
+    } catch (error) {
+      console.error("[MenuEditor] Error al cargar datos:", error.message);
+      toast.error(`Error al cargar datos: ${error.message || "Intenta de nuevo"}`);
+      setMenuSections({ "Platos Principales": [], Postres: [], Bebidas: [] });
+    } finally {
+      setLoading(false);
+    }
+  }, [restaurantId, user, buildImageUrl, validateUrl]);
+
+  // Manejar cambio de plantilla
+  const handleTemplateChange = useCallback(
+    (e) => {
+      const type = e.target.value;
+      const template = templates.find((t) => t.type === type) || templates[0];
+      if (!template) return;
+      setSelectedTemplate(template);
+      setColors(template.default_colors || { primary: "#FF9800", secondary: "#4CAF50" });
+      const newSections = template.fields || { "Platos Principales": [], Postres: [], Bebidas: [] };
+      setMenuSections(newSections);
+      setMenuItems(
+        Object.entries(newSections).flatMap(([category, items]) =>
+          items.map((item) => ({ ...item, category }))
+        )
+      );
+    },
+    [templates]
+  );
 
   // Efectos
   useEffect(() => {
