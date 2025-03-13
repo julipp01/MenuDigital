@@ -9,8 +9,8 @@ import { toPng } from "html-to-image";
 import ThreeDViewer from "@/components/ThreeDViewer";
 import useSocket from "@/hooks/useSocket";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
-const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || "http://localhost:5173";
+// Definición de FRONTEND_URL con fallback dinámico
+const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || window.location.origin;
 
 const MenuEditor = ({ restaurantId }) => {
   const { user } = useAuth();
@@ -57,7 +57,7 @@ const MenuEditor = ({ restaurantId }) => {
       const menuResponse = await api.get(`/menu/${restaurantId}`);
       const items = (menuResponse.data.items || []).map((item) => ({
         ...item,
-        imageUrl: item.image_url && item.image_url.startsWith("http") ? item.image_url.replace(BACKEND_URL, "") : item.image_url,
+        imageUrl: item.image_url && item.image_url.startsWith("http") ? item.image_url.replace(import.meta.env.VITE_API_URL, "") : item.image_url,
       }));
       setMenuItems(items);
     } catch (error) {
@@ -317,7 +317,7 @@ const MenuEditor = ({ restaurantId }) => {
               />
               {logo && (
                 <img
-                  src={`${BACKEND_URL}${logo}`}
+                  src={`${import.meta.env.VITE_API_URL}${logo}`}
                   alt="Logo"
                   className="mt-2 w-16 h-16 rounded-full object-cover mx-auto shadow-sm"
                   onError={() => setLogo(null)}
@@ -385,7 +385,7 @@ const MenuEditor = ({ restaurantId }) => {
               <header className="text-center mb-4">
                 {logo && (
                   <img
-                    src={`${BACKEND_URL}${logo}`}
+                    src={`${import.meta.env.VITE_API_URL}${logo}`}
                     alt="Logo"
                     className="w-20 h-20 rounded-full mx-auto mb-2 shadow-md"
                     onError={() => setLogo(null)}
@@ -415,11 +415,11 @@ const MenuEditor = ({ restaurantId }) => {
                             {item.imageUrl ? (
                               item.imageUrl.endsWith(".glb") ? (
                                 <div className="w-16 h-16">
-                                  <ThreeDViewer modelUrl={`${BACKEND_URL}${item.imageUrl}`} autoRotate />
+                                  <ThreeDViewer modelUrl={`${import.meta.env.VITE_API_URL}${item.imageUrl}`} autoRotate />
                                 </div>
                               ) : (
                                 <img
-                                  src={`${BACKEND_URL}${item.imageUrl}`}
+                                  src={`${import.meta.env.VITE_API_URL}${item.imageUrl}`}
                                   alt={item.name}
                                   className="w-16 h-16 rounded-md object-cover"
                                   onError={(e) => (e.target.src = "/placeholder-image.png")}
@@ -603,11 +603,11 @@ const MenuEditor = ({ restaurantId }) => {
                               {item.imageUrl ? (
                                 item.imageUrl.endsWith(".glb") ? (
                                   <div className="w-16 h-16">
-                                    <ThreeDViewer modelUrl={`${BACKEND_URL}${item.imageUrl}`} autoRotate />
+                                    <ThreeDViewer modelUrl={`${import.meta.env.VITE_API_URL}${item.imageUrl}`} autoRotate />
                                   </div>
                                 ) : (
                                   <img
-                                    src={`${BACKEND_URL}${item.imageUrl}`}
+                                    src={`${import.meta.env.VITE_API_URL}${item.imageUrl}`}
                                     alt={item.name}
                                     className="w-16 h-16 rounded-md object-cover"
                                     onError={(e) => (e.target.src = "/placeholder-image.png")}
