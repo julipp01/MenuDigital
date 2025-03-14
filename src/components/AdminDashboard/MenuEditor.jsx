@@ -188,10 +188,12 @@ const MenuEditor = ({ restaurantId }) => {
 
       // Guardar la nueva plantilla en el backend
       try {
-        await api.put(`/restaurantes/${restaurantId}`, {
+        const dataToSend = {
           template_id: template.id,
           colors: template.default_colors,
-        });
+        };
+        console.log("[MenuEditor] Datos enviados a PUT /restaurantes/:id:", dataToSend); // Depuración
+        await api.put(`/restaurantes/${restaurantId}`, dataToSend);
         toast.success("Plantilla actualizada con éxito");
       } catch (err) {
         console.error("[MenuEditor] Error al actualizar plantilla:", err.message);
