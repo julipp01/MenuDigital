@@ -265,19 +265,19 @@ const MenuEditor = ({ restaurantId }) => {
           : file;
 
         const formData = new FormData();
-        formData.append("archivo", compressedFile); // Cambiar "file" a "archivo" para coincidir con el backend
+        formData.append(fieldName, compressedFile); // Usar fieldName en lugar de "archivo" fijo
         Object.entries(additionalData).forEach(([key, value]) => {
           if (value) formData.append(key, value);
         });
 
-        console.log(`[MenuEditor] Enviando solicitud a ${endpoint} con archivo:`, file.name, additionalData);
+        console.log(`[MenuEditor] Enviando solicitud a ${endpoint} con archivo:`, file.name, `campo: ${fieldName}`, additionalData);
         const response = await api.post(endpoint, formData, {
           headers: { "Content-Type": "multipart/form-data" },
           timeout: 20000,
         });
 
         console.log("[MenuEditor] Respuesta del servidor:", response.data);
-        const fileUrl = buildImageUrl(response.data.fileUrl);
+        const fileUrl = buildImageUrl(response.data.fileUrl || response.data.logoUrl);
         if (await validateUrl(fileUrl)) {
           toast.success(`${fieldName === "logo" ? "Logo" : "Archivo"} subido con éxito`);
           return fileUrl;
