@@ -75,6 +75,7 @@ const MenuEditor = ({ restaurantId }) => {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false); // Nuevo estado para el modal
 
   const validateUrl = useCallback(async (url) => {
     if (!url) return false;
@@ -232,12 +233,12 @@ const MenuEditor = ({ restaurantId }) => {
   }, [fetchData, isConnected, socket]);
 
   const saveConfig = useCallback(
-    async (overrideLogo = logo) => { // Añadimos overrideLogo como parámetro
+    async (overrideLogo = logo) => {
       try {
         const configData = {
           name: restaurantName,
           colors,
-          logo: overrideLogo, // Usamos el logo explícito si se pasa, sino el estado actual
+          logo: overrideLogo,
           sections: menuSections,
           plan_id: planId,
         };
@@ -245,7 +246,7 @@ const MenuEditor = ({ restaurantId }) => {
         const response = await api.put(`/restaurantes/${restaurantId}`, configData, { timeout: 20000 });
         console.log("[MenuEditor] Respuesta de PUT:", response.data);
         toast.success("Configuración guardada con éxito");
-        await fetchData(); // Recarga los datos inmediatamente
+        await fetchData();
       } catch (err) {
         console.error("[MenuEditor] Error al guardar configuración:", err.message, err.response?.data);
         const errorMsg = err.response?.data?.error || "No se pudo guardar la configuración";
@@ -323,9 +324,8 @@ const MenuEditor = ({ restaurantId }) => {
         const newLogoUrl = await uploadFile(file, `/restaurantes/${restaurantId}/upload-logo`, "logo");
         if (newLogoUrl) {
           console.log("[MenuEditor] Nueva URL del logo:", newLogoUrl);
-          setLogo(newLogoUrl); // Actualiza el estado inmediatamente
-          // Forzar que saveConfig use el nuevo logo
-          await saveConfig(newLogoUrl); // Pasamos el nuevo logo como argumento para asegurar sincronización
+          setLogo(newLogoUrl);
+          await saveConfig(newLogoUrl);
         }
       } catch (err) {
         console.error("[MenuEditor] Error al subir logo:", err.message);
@@ -361,6 +361,7 @@ const MenuEditor = ({ restaurantId }) => {
         await api.request({ method, url, data: newItem, timeout: 20000 });
         setNewItem({ name: "", price: "", description: "", category: "Platos Principales", imageUrl: "" });
         setEditingItem(null);
+        setShowEditModal(false); // Cerrar modal tras guardar
         await fetchData();
         toast.success(`Ítem ${editingItem ? "actualizado" : "agregado"} con éxito`);
         if (socket) {
@@ -377,13 +378,16 @@ const MenuEditor = ({ restaurantId }) => {
   const handleCancelEdit = useCallback(() => {
     setEditingItem(null);
     setNewItem({ name: "", price: "", description: "", category: "Platos Principales", imageUrl: "" });
+    setShowEditModal(false); // Cerrar modal al cancelar
   }, []);
 
   const handleDeleteItem = useCallback(
     async (id) => {
       if (!window.confirm("¿Seguro que quieres eliminar este ítem?")) return;
       try {
-        await api.delete(`/menu/${restaurantId}/${id}`, { timeout: 20000 });
+        console.log("[MenuEditor] Intentando eliminar ítem:", { restaurantId, itemId: id });
+        const response = await api.delete(`/menu/${restaurantId}/${id}`, { timeout: 20000 });
+        console.log("[MenuEditor] Respuesta de DELETE:", response.data);
         await fetchData();
         toast.success("Ítem eliminado con éxito");
         if (socket) {
@@ -391,7 +395,8 @@ const MenuEditor = ({ restaurantId }) => {
         }
       } catch (err) {
         console.error("[MenuEditor] Error al eliminar ítem:", err.message, err.response?.data);
-        toast.error("Error al eliminar el ítem");
+        const errorMsg = err.response?.data?.error || "Error al eliminar el ítem";
+        toast.error(errorMsg);
       }
     },
     [restaurantId, fetchData, socket]
@@ -726,20 +731,10 @@ const MenuEditor = ({ restaurantId }) => {
                     type="submit"
                     className="flex-1 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium disabled:bg-gray-400"
                     disabled={loading || uploading}
-                    aria-label={editingItem ? "Actualizar plato" : "Agregar plato"}
+                    aria-label="Agregar plato"
                   >
-                    {editingItem ? "Actualizar Plato" : "Agregar Plato"}
+                    Agregar Plato
                   </button>
-                  {editingItem && (
-                    <button
-                      type="button"
-                      onClick={handleCancelEdit}
-                      className="py-2 px-4 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition text-sm font-medium"
-                      aria-label="Cancelar edición"
-                    >
-                      Cancelar
-                    </button>
-                  )}
                 </div>
               </form>
               <div className="bg-gray-50 p-3 rounded-lg max-h-[500px] overflow-y-auto">
@@ -867,6 +862,7 @@ const MenuEditor = ({ restaurantId }) => {
                                 onClick={() => {
                                   setEditingItem(item);
                                   setNewItem({ ...item });
+                                  setShowEditModal(true); // Abrir modal al editar
                                 }}
                                 className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-xs"
                                 aria-label={`Editar ítem ${item.name}`}
@@ -893,6 +889,106 @@ const MenuEditor = ({ restaurantId }) => {
         </motion.div>
       </div>
 
+      {/* Modal para edición */}
+      <AnimatePresence>
+        {showEditModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-modal-title"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white p-6 rounded-xl w-full max-w-md shadow-lg"
+            >
+              <h4 id="edit-modal-title" className="text-lg font-bold mb-4 text-gray-800">
+                Editar Ítem
+              </h4>
+              <form onSubmit={handleAddOrUpdateItem} className="space-y-4">
+                <input
+                  type="text"
+                  name="name"
+                  value={newItem.name}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="Nombre del Plato"
+                  className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-400"
+                  required
+                  aria-label="Nombre del plato"
+                />
+                <input
+                  type="number"
+                  name="price"
+                  value={newItem.price}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, price: e.target.value }))}
+                  placeholder="S/."
+                  className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-400"
+                  step="0.01"
+                  min="0"
+                  required
+                  aria-label="Precio del plato"
+                />
+                <select
+                  name="category"
+                  value={newItem.category}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, category: e.target.value }))}
+                  className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-400"
+                  required
+                  aria-label="Categoría del plato"
+                >
+                  {Object.keys(menuSections).map((section) => (
+                    <option key={section} value={section}>
+                      {section}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  name="description"
+                  value={newItem.description}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Descripción"
+                  className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-400"
+                  aria-label="Descripción del plato"
+                />
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,model/gltf-binary,.glb"
+                  onChange={handleImageUpload}
+                  className="w-full p-1 border rounded-lg text-xs"
+                  disabled={uploading}
+                  aria-label="Subir imagen o modelo 3D"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium disabled:bg-gray-400"
+                    disabled={loading || uploading}
+                    aria-label="Actualizar plato"
+                  >
+                    Actualizar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition text-sm font-medium"
+                    aria-label="Cancelar edición"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal para QR */}
       <AnimatePresence>
         {showQRModal && (
           <motion.div
