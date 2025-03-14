@@ -84,7 +84,7 @@ const MenuEditor = ({ restaurantId }) => {
     if (!url) return false;
     if (urlCache.current.has(url)) return urlCache.current.get(url);
     try {
-      console.log("[MenuEditor] Validando URL:", url); // Depuración
+      console.log("[MenuEditor] Validando URL:", url);
       const response = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(5000) });
       const isValid = response.ok;
       urlCache.current.set(url, isValid);
@@ -101,11 +101,10 @@ const MenuEditor = ({ restaurantId }) => {
   const buildImageUrl = useCallback(
     (url) => {
       if (!url) return null;
-      if (url.startsWith("http")) return url; // Si es una URL absoluta (como Cloudinary), usarla directamente
-      // Si es una ruta relativa, evitar duplicar /uploads/
+      if (url.startsWith("http")) return url; // URL absoluta (Cloudinary)
       const cleanUrl = url.startsWith("/uploads/") ? url : `/uploads/${url}`;
       const fullUrl = `${API_BASE_URL}${cleanUrl}`.replace(/\/+$/, "").replace(/\/uploads\/+/g, "/uploads/");
-      console.log("[MenuEditor] Construyendo URL:", fullUrl); // Depuración
+      console.log("[MenuEditor] Construyendo URL:", fullUrl);
       return fullUrl;
     },
     [API_BASE_URL]
@@ -136,7 +135,9 @@ const MenuEditor = ({ restaurantId }) => {
       setRestaurantName(restaurantData.name || "Mi Restaurante");
 
       const logoUrl = buildImageUrl(restaurantData.logo_url);
-      setLogo(logoUrl && (await validateUrl(logoUrl)) ? logoUrl : null);
+      const validatedLogoUrl = logoUrl && (await validateUrl(logoUrl)) ? logoUrl : null;
+      setLogo(validatedLogoUrl);
+      console.log("[MenuEditor] Logo cargado del servidor:", validatedLogoUrl);
 
       setPlanId(restaurantData.plan_id || null);
       setMenuSections(
@@ -159,7 +160,7 @@ const MenuEditor = ({ restaurantId }) => {
       );
       setMenuItems(validatedItems);
     } catch (err) {
-      console.error("[MenuEditor] Error al cargar datos:", err.message);
+      console.error("[MenuEditor] Error al cargar datos:", err.message, err.response?.data);
       setError(`Error al cargar datos: ${err.message || "Intenta de nuevo"}`);
       setMenuSections({ "Platos Principales": [], Postres: [], Bebidas: [] });
     } finally {
@@ -186,17 +187,16 @@ const MenuEditor = ({ restaurantId }) => {
         )
       );
 
-      // Guardar la nueva plantilla en el backend
       try {
         const dataToSend = {
           template_id: template.id,
           colors: template.default_colors,
         };
-        console.log("[MenuEditor] Datos enviados a PUT /restaurantes/:id:", dataToSend); // Depuración
+        console.log("[MenuEditor] Datos enviados a PUT /restaurantes/:id:", dataToSend);
         await api.put(`/restaurantes/${restaurantId}`, dataToSend);
         toast.success("Plantilla actualizada con éxito");
       } catch (err) {
-        console.error("[MenuEditor] Error al actualizar plantilla:", err.message);
+        console.error("[MenuEditor] Error al actualizar plantilla:", err.message, err.response?.data);
         toast.error("Error al actualizar la plantilla");
       }
     },
@@ -220,18 +220,25 @@ const MenuEditor = ({ restaurantId }) => {
   // Guardar configuración
   const saveConfig = useCallback(async () => {
     try {
-      await api.put(`/restaurantes/${restaurantId}`, {
+      const configData = {
         name: restaurantName,
         colors,
         logo,
         sections: menuSections,
         plan_id: planId,
+      };
+      console.log("[MenuEditor] Guardando configuración con:", configData);
+      const response = await api.put(`/restaurantes/${restaurantId}`, configData, {
+        timeout: 20000,
       });
+      console.log("[MenuEditor] Respuesta de PUT:", response.data);
       toast.success("Configuración guardada con éxito");
-      await fetchData();
+      await fetchData(); // Recarga inmediatamente para reflejar los cambios
     } catch (err) {
-      console.error("[MenuEditor] Error al guardar configuración:", err.message);
-      toast.error("No se pudo guardar la configuración");
+      console.error("[MenuEditor] Error al guardar configuración:", err.message, err.response?.data);
+      const errorMsg = err.response?.data?.error || "No se pudo guardar la configuración";
+      toast.error(errorMsg);
+      throw err; // Permite capturar el error en handleLogoUpload
     }
   }, [restaurantId, restaurantName, colors, logo, menuSections, planId, fetchData]);
 
@@ -265,7 +272,7 @@ const MenuEditor = ({ restaurantId }) => {
           : file;
 
         const formData = new FormData();
-        formData.append(fieldName, compressedFile); // Usar fieldName en lugar de "archivo" fijo
+        formData.append(fieldName, compressedFile);
         Object.entries(additionalData).forEach(([key, value]) => {
           if (value) formData.append(key, value);
         });
@@ -298,10 +305,17 @@ const MenuEditor = ({ restaurantId }) => {
   const handleLogoUpload = useCallback(
     async (e) => {
       const file = e.target.files[0];
-      const newLogoUrl = await uploadFile(file, `/restaurantes/${restaurantId}/upload-logo`, "logo");
-      if (newLogoUrl) {
-        setLogo(newLogoUrl);
-        await saveConfig();
+      if (!file) return;
+      try {
+        const newLogoUrl = await uploadFile(file, `/restaurantes/${restaurantId}/upload-logo`, "logo");
+        if (newLogoUrl) {
+          console.log("[MenuEditor] Nueva URL del logo:", newLogoUrl);
+          setLogo(newLogoUrl);
+          await saveConfig(); // Persistir inmediatamente
+        }
+      } catch (err) {
+        console.error("[MenuEditor] Error al subir logo:", err.message);
+        toast.error("Error al subir el logo");
       }
     },
     [restaurantId, uploadFile, saveConfig]
@@ -311,7 +325,7 @@ const MenuEditor = ({ restaurantId }) => {
     async (e) => {
       const file = e.target.files[0];
       const newImageUrl = await uploadFile(file, `/menu/${restaurantId}/upload`, "file", {
-        itemId: editingItem?.id, // Enviar el ID del ítem si estás editando uno
+        itemId: editingItem?.id,
       });
       if (newImageUrl) {
         setNewItem((prev) => ({ ...prev, imageUrl: newImageUrl }));
@@ -340,7 +354,7 @@ const MenuEditor = ({ restaurantId }) => {
           socket.send(JSON.stringify({ type: "menu-updated", restaurantId, item: newItem }));
         }
       } catch (err) {
-        console.error("[MenuEditor] Error al guardar ítem:", err.message);
+        console.error("[MenuEditor] Error al guardar ítem:", err.message, err.response?.data);
         toast.error(`Error al guardar el ítem: ${err.message}`);
       }
     },
@@ -363,7 +377,7 @@ const MenuEditor = ({ restaurantId }) => {
           socket.send(JSON.stringify({ type: "menu-updated", restaurantId, deletedItemId: id }));
         }
       } catch (err) {
-        console.error("[MenuEditor] Error al eliminar ítem:", err.message);
+        console.error("[MenuEditor] Error al eliminar ítem:", err.message, err.response?.data);
         toast.error("Error al eliminar el ítem");
       }
     },
