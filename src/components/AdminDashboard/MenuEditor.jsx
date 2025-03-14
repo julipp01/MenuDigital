@@ -10,11 +10,9 @@ import Compressor from "compressorjs";
 import ThreeDViewer from "@/components/ThreeDViewer";
 import useSocket from "@/hooks/useSocket";
 
-// Configuración de URLs
 const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || window.location.origin;
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
-// Componente MediaViewer memoizado
 const MediaViewer = React.memo(({ item }) => {
   if (!item.imageUrl) {
     return (
@@ -50,7 +48,6 @@ const MenuEditor = ({ restaurantId }) => {
   const qrRef = useRef(null);
   const urlCache = useRef(new Map());
 
-  // Estados
   const [menuItems, setMenuItems] = useState([]);
   const [newItem, setNewItem] = useState({
     name: "",
@@ -79,7 +76,6 @@ const MenuEditor = ({ restaurantId }) => {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Validar URLs con caché
   const validateUrl = useCallback(async (url) => {
     if (!url) return false;
     if (urlCache.current.has(url)) return urlCache.current.get(url);
@@ -97,11 +93,10 @@ const MenuEditor = ({ restaurantId }) => {
     }
   }, []);
 
-  // Construir URLs
   const buildImageUrl = useCallback(
     (url) => {
       if (!url) return null;
-      if (url.startsWith("http")) return url; // URL absoluta (Cloudinary)
+      if (url.startsWith("http")) return url;
       const cleanUrl = url.startsWith("/uploads/") ? url : `/uploads/${url}`;
       const fullUrl = `${API_BASE_URL}${cleanUrl}`.replace(/\/+$/, "").replace(/\/uploads\/+/g, "/uploads/");
       console.log("[MenuEditor] Construyendo URL:", fullUrl);
@@ -110,7 +105,24 @@ const MenuEditor = ({ restaurantId }) => {
     [API_BASE_URL]
   );
 
-  // Cargar datos iniciales
+  const createRestaurantFallback = useCallback(async () => {
+    try {
+      const defaultData = {
+        name: "Restaurante Nuevo",
+        colors: { primary: "#FF9800", secondary: "#4CAF50" },
+        sections: { "Platos Principales": [], Postres: [], Bebidas: [] },
+        owner_id: user.id,
+      };
+      console.log("[MenuEditor] Creando restaurante con datos predeterminados:", defaultData);
+      const response = await api.post("/restaurantes", defaultData);
+      console.log("[MenuEditor] Restaurante creado:", response.data);
+      return response.data;
+    } catch (err) {
+      console.error("[MenuEditor] Error al crear restaurante:", err.message, err.response?.data);
+      throw err;
+    }
+  }, [user]);
+
   const fetchData = useCallback(async () => {
     if (!user || !restaurantId) {
       setError("Faltan datos de usuario o restaurante");
@@ -128,7 +140,12 @@ const MenuEditor = ({ restaurantId }) => {
       const templatesData = templateResponse.data || [];
       setTemplates(templatesData);
 
-      const restaurantData = restaurantResponse.data[0] || {};
+      let restaurantData = restaurantResponse.data[0];
+      if (!restaurantData) {
+        toast.warn("Restaurante no encontrado, intentando crearlo...");
+        restaurantData = await createRestaurantFallback();
+      }
+
       const template = templatesData.find((t) => t.id === restaurantData.template_id) || templatesData[0] || {};
       setSelectedTemplate(template);
       setColors(restaurantData.colors || template.default_colors || { primary: "#FF9800", secondary: "#4CAF50" });
@@ -161,14 +178,13 @@ const MenuEditor = ({ restaurantId }) => {
       setMenuItems(validatedItems);
     } catch (err) {
       console.error("[MenuEditor] Error al cargar datos:", err.message, err.response?.data);
-      setError(`Error al cargar datos: ${err.message || "Intenta de nuevo"}`);
+      setError(`Error al cargar datos: ${err.response?.status === 404 ? "Restaurante no encontrado" : err.message}`);
       setMenuSections({ "Platos Principales": [], Postres: [], Bebidas: [] });
     } finally {
       setLoading(false);
     }
-  }, [restaurantId, user, buildImageUrl, validateUrl]);
+  }, [restaurantId, user, buildImageUrl, validateUrl, createRestaurantFallback]);
 
-  // Manejar cambio de plantilla
   const handleTemplateChange = useCallback(
     async (e) => {
       const type = e.target.value;
@@ -203,10 +219,8 @@ const MenuEditor = ({ restaurantId }) => {
     [templates, restaurantId]
   );
 
-  // Efectos combinados
   useEffect(() => {
     fetchData();
-
     if (isConnected && socket) {
       const handleMenuUpdate = () => {
         toast.info("Menú actualizado en tiempo real");
@@ -217,7 +231,6 @@ const MenuEditor = ({ restaurantId }) => {
     }
   }, [fetchData, isConnected, socket]);
 
-  // Guardar configuración
   const saveConfig = useCallback(async () => {
     try {
       const configData = {
@@ -228,21 +241,18 @@ const MenuEditor = ({ restaurantId }) => {
         plan_id: planId,
       };
       console.log("[MenuEditor] Guardando configuración con:", configData);
-      const response = await api.put(`/restaurantes/${restaurantId}`, configData, {
-        timeout: 20000,
-      });
+      const response = await api.put(`/restaurantes/${restaurantId}`, configData, { timeout: 20000 });
       console.log("[MenuEditor] Respuesta de PUT:", response.data);
       toast.success("Configuración guardada con éxito");
-      await fetchData(); // Recarga inmediatamente para reflejar los cambios
+      await fetchData();
     } catch (err) {
       console.error("[MenuEditor] Error al guardar configuración:", err.message, err.response?.data);
       const errorMsg = err.response?.data?.error || "No se pudo guardar la configuración";
       toast.error(errorMsg);
-      throw err; // Permite capturar el error en handleLogoUpload
+      throw err;
     }
   }, [restaurantId, restaurantName, colors, logo, menuSections, planId, fetchData]);
 
-  // Subir archivos
   const uploadFile = useCallback(
     async (file, endpoint, fieldName = "file", additionalData = {}) => {
       if (!file) return null;
@@ -311,7 +321,7 @@ const MenuEditor = ({ restaurantId }) => {
         if (newLogoUrl) {
           console.log("[MenuEditor] Nueva URL del logo:", newLogoUrl);
           setLogo(newLogoUrl);
-          await saveConfig(); // Persistir inmediatamente
+          await saveConfig();
         }
       } catch (err) {
         console.error("[MenuEditor] Error al subir logo:", err.message);
@@ -334,7 +344,6 @@ const MenuEditor = ({ restaurantId }) => {
     [restaurantId, uploadFile, editingItem]
   );
 
-  // Manejar ítems del menú
   const handleAddOrUpdateItem = useCallback(
     async (e) => {
       e.preventDefault();
@@ -384,7 +393,6 @@ const MenuEditor = ({ restaurantId }) => {
     [restaurantId, fetchData, socket]
   );
 
-  // Manejar secciones
   const handleRenameSection = useCallback(
     (oldKey, newKey) => {
       if (!newKey.trim()) {
@@ -435,7 +443,6 @@ const MenuEditor = ({ restaurantId }) => {
     [menuSections, saveConfig]
   );
 
-  // Descargar QR
   const handleDownloadQR = useCallback(async () => {
     if (!qrRef.current) return;
     try {
@@ -451,7 +458,6 @@ const MenuEditor = ({ restaurantId }) => {
     }
   }, [restaurantId]);
 
-  // Filtrar secciones
   const filteredSections = useMemo(() => {
     return Object.entries(menuSections).map(([section]) => ({
       section,
@@ -459,7 +465,6 @@ const MenuEditor = ({ restaurantId }) => {
     }));
   }, [menuSections, menuItems]);
 
-  // Renderizado
   if (!user || !restaurantId) {
     return <div className="p-4 text-red-600">Error: Faltan datos de usuario o restaurante</div>;
   }
@@ -505,7 +510,6 @@ const MenuEditor = ({ restaurantId }) => {
         {restaurantName || "Editor de Menú"}
       </motion.h2>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Configuración */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -589,7 +593,6 @@ const MenuEditor = ({ restaurantId }) => {
           </div>
         </motion.div>
 
-        {/* Editor de Menú */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -886,7 +889,6 @@ const MenuEditor = ({ restaurantId }) => {
         </motion.div>
       </div>
 
-      {/* Modal QR */}
       <AnimatePresence>
         {showQRModal && (
           <motion.div
