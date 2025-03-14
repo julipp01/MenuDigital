@@ -101,9 +101,10 @@ const MenuEditor = ({ restaurantId }) => {
   const buildImageUrl = useCallback(
     (url) => {
       if (!url) return null;
-      if (url.startsWith("http")) return url; // Si es una URL absoluta, usarla directamente
-      // Si es una ruta relativa, asumir que viene de Cloudinary o el backend
-      const fullUrl = `${API_BASE_URL}/uploads/${url}`.replace(/\/+$/, "");
+      if (url.startsWith("http")) return url; // Si es una URL absoluta (como Cloudinary), usarla directamente
+      // Si es una ruta relativa, evitar duplicar /uploads/
+      const cleanUrl = url.startsWith("/uploads/") ? url : `/uploads/${url}`;
+      const fullUrl = `${API_BASE_URL}${cleanUrl}`.replace(/\/+$/, "").replace(/\/uploads\/+/g, "/uploads/");
       console.log("[MenuEditor] Construyendo URL:", fullUrl); // Depuración
       return fullUrl;
     },
