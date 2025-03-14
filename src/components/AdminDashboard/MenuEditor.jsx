@@ -84,6 +84,7 @@ const MenuEditor = ({ restaurantId }) => {
     if (!url) return false;
     if (urlCache.current.has(url)) return urlCache.current.get(url);
     try {
+      console.log("[MenuEditor] Validando URL:", url); // Depuración
       const response = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(5000) });
       const isValid = response.ok;
       urlCache.current.set(url, isValid);
@@ -98,8 +99,15 @@ const MenuEditor = ({ restaurantId }) => {
 
   // Construir URLs
   const buildImageUrl = useCallback(
-    (url) => (url && url.startsWith("http") ? url : `${API_BASE_URL}${url || ""}`.replace(/\/+$/, "")),
-    []
+    (url) => {
+      if (!url) return null;
+      if (url.startsWith("http")) return url; // Si es una URL absoluta, usarla directamente
+      // Si es una ruta relativa, asumir que viene de Cloudinary o el backend
+      const fullUrl = `${API_BASE_URL}/uploads/${url}`.replace(/\/+$/, "");
+      console.log("[MenuEditor] Construyendo URL:", fullUrl); // Depuración
+      return fullUrl;
+    },
+    [API_BASE_URL]
   );
 
   // Cargar datos iniciales
