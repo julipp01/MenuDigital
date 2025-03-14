@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 
 const Register = () => {
@@ -8,7 +8,6 @@ const Register = () => {
   const [formData, setFormData] = useState({ name: "", email: "", password: "" });
   const [localError, setLocalError] = useState("");
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
 
   const handleChange = (e) => {
     console.log(`[REGISTER] Cambio de campo: ${e.target.name} -> ${e.target.value}`);
@@ -22,12 +21,11 @@ const Register = () => {
 
     try {
       console.log("[REGISTER] Enviando formulario con datos:", formData);
-      await register(formData);
-      console.log("[REGISTER] Registro exitoso, redirigiendo a /login");
-      navigate("/login");
+      await register(formData); // El registro ahora autentica automáticamente y redirige
+      console.log("[REGISTER] Registro exitoso");
     } catch (err) {
       console.error("[REGISTER] Error durante el registro:", err);
-      setLocalError(err.message); // Mostrar el error lanzado por register
+      setLocalError(err.message || "Error al registrar usuario");
     } finally {
       setLoading(false);
     }
