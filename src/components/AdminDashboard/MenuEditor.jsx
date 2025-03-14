@@ -237,7 +237,7 @@ const MenuEditor = ({ restaurantId }) => {
 
   // Subir archivos
   const uploadFile = useCallback(
-    async (file, endpoint, fieldName = "file") => {
+    async (file, endpoint, fieldName = "file", additionalData = {}) => {
       if (!file) return null;
       const isImage = file.type.match(/image\/(jpeg|png)/);
       const is3DModel = file.type === "model/gltf-binary" || file.name.endsWith(".glb");
@@ -265,21 +265,28 @@ const MenuEditor = ({ restaurantId }) => {
           : file;
 
         const formData = new FormData();
-        formData.append(fieldName, compressedFile);
+        formData.append("archivo", compressedFile); // Cambiar "file" a "archivo" para coincidir con el backend
+        Object.entries(additionalData).forEach(([key, value]) => {
+          if (value) formData.append(key, value);
+        });
+
+        console.log(`[MenuEditor] Enviando solicitud a ${endpoint} con archivo:`, file.name, additionalData);
         const response = await api.post(endpoint, formData, {
           headers: { "Content-Type": "multipart/form-data" },
           timeout: 20000,
         });
 
-        const fileUrl = buildImageUrl(response.data.fileUrl || response.data.logoUrl);
+        console.log("[MenuEditor] Respuesta del servidor:", response.data);
+        const fileUrl = buildImageUrl(response.data.fileUrl);
         if (await validateUrl(fileUrl)) {
           toast.success(`${fieldName === "logo" ? "Logo" : "Archivo"} subido con éxito`);
           return fileUrl;
         }
         throw new Error("El archivo subido no es accesible");
       } catch (err) {
-        console.error(`[MenuEditor] Error al subir ${fieldName}:`, err.message);
-        toast.error(`Error al subir ${fieldName}: ${err.message}`);
+        console.error(`[MenuEditor] Error al subir ${fieldName}:`, err.message, err.response?.data);
+        const errorMessage = err.response?.data?.error || `Error al subir ${fieldName}: ${err.message}`;
+        toast.error(errorMessage);
         return null;
       } finally {
         setUploading(false);
@@ -303,12 +310,14 @@ const MenuEditor = ({ restaurantId }) => {
   const handleImageUpload = useCallback(
     async (e) => {
       const file = e.target.files[0];
-      const newImageUrl = await uploadFile(file, `/menu/${restaurantId}/upload`);
+      const newImageUrl = await uploadFile(file, `/menu/${restaurantId}/upload`, "file", {
+        itemId: editingItem?.id, // Enviar el ID del ítem si estás editando uno
+      });
       if (newImageUrl) {
         setNewItem((prev) => ({ ...prev, imageUrl: newImageUrl }));
       }
     },
-    [restaurantId, uploadFile]
+    [restaurantId, uploadFile, editingItem]
   );
 
   // Manejar ítems del menú
