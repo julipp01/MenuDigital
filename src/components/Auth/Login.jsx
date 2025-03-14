@@ -14,7 +14,7 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLocalError("");
-    
+
     if (!email.trim() || !password.trim()) {
       setLocalError("Por favor, ingresa email y contraseña.");
       return;
@@ -23,7 +23,7 @@ const Login = () => {
     setLoading(true);
     try {
       console.log("🔹 Enviando login con:", { email, password });
-      await login(email, password);
+      await login({ email, password }); // Corrección: pasa un objeto
     } catch (err) {
       console.error("Error en handleSubmit:", err.message);
       setLocalError(err.message);
@@ -54,7 +54,7 @@ const Login = () => {
           onChange={(e) => setPassword(e.target.value)}
           className="w-full p-2 border rounded mb-4"
         />
-        
+
         <button
           type="submit"
           className="w-full bg-orange-500 text-white p-2 rounded hover:bg-orange-600 transition duration-200"
