@@ -231,27 +231,30 @@ const MenuEditor = ({ restaurantId }) => {
     }
   }, [fetchData, isConnected, socket]);
 
-  const saveConfig = useCallback(async () => {
-    try {
-      const configData = {
-        name: restaurantName,
-        colors,
-        logo,
-        sections: menuSections,
-        plan_id: planId,
-      };
-      console.log("[MenuEditor] Guardando configuración con:", configData);
-      const response = await api.put(`/restaurantes/${restaurantId}`, configData, { timeout: 20000 });
-      console.log("[MenuEditor] Respuesta de PUT:", response.data);
-      toast.success("Configuración guardada con éxito");
-      await fetchData();
-    } catch (err) {
-      console.error("[MenuEditor] Error al guardar configuración:", err.message, err.response?.data);
-      const errorMsg = err.response?.data?.error || "No se pudo guardar la configuración";
-      toast.error(errorMsg);
-      throw err;
-    }
-  }, [restaurantId, restaurantName, colors, logo, menuSections, planId, fetchData]);
+  const saveConfig = useCallback(
+    async (overrideLogo = logo) => { // Añadimos overrideLogo como parámetro
+      try {
+        const configData = {
+          name: restaurantName,
+          colors,
+          logo: overrideLogo, // Usamos el logo explícito si se pasa, sino el estado actual
+          sections: menuSections,
+          plan_id: planId,
+        };
+        console.log("[MenuEditor] Guardando configuración con:", configData);
+        const response = await api.put(`/restaurantes/${restaurantId}`, configData, { timeout: 20000 });
+        console.log("[MenuEditor] Respuesta de PUT:", response.data);
+        toast.success("Configuración guardada con éxito");
+        await fetchData(); // Recarga los datos inmediatamente
+      } catch (err) {
+        console.error("[MenuEditor] Error al guardar configuración:", err.message, err.response?.data);
+        const errorMsg = err.response?.data?.error || "No se pudo guardar la configuración";
+        toast.error(errorMsg);
+        throw err;
+      }
+    },
+    [restaurantId, restaurantName, colors, logo, menuSections, planId, fetchData]
+  );
 
   const uploadFile = useCallback(
     async (file, endpoint, fieldName = "file", additionalData = {}) => {
@@ -320,8 +323,9 @@ const MenuEditor = ({ restaurantId }) => {
         const newLogoUrl = await uploadFile(file, `/restaurantes/${restaurantId}/upload-logo`, "logo");
         if (newLogoUrl) {
           console.log("[MenuEditor] Nueva URL del logo:", newLogoUrl);
-          setLogo(newLogoUrl);
-          await saveConfig();
+          setLogo(newLogoUrl); // Actualiza el estado inmediatamente
+          // Forzar que saveConfig use el nuevo logo
+          await saveConfig(newLogoUrl); // Pasamos el nuevo logo como argumento para asegurar sincronización
         }
       } catch (err) {
         console.error("[MenuEditor] Error al subir logo:", err.message);
