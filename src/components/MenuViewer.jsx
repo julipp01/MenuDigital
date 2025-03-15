@@ -78,11 +78,21 @@ const MenuViewer = ({ restaurantId }) => {
     </div>
   ) : (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-200 font-sans">
-      <header className="fixed top-0 left-0 right-0 bg-white shadow-md p-6 z-20 flex items-center justify-center rounded-b-xl">
-        {logo && <img src={logo} alt={restaurantName} className="w-16 h-16 rounded-full shadow-lg mr-4" />}
+      <header className="fixed top-0 left-0 right-0 bg-white shadow-md p-6 z-20 flex items-center justify-between rounded-b-xl">
+        {logo && <img src={logo} alt={restaurantName} className="w-16 h-16 rounded-full shadow-lg" />}
         <h1 className="text-4xl font-bold text-gray-900" style={{ color: colors.primary }}>{restaurantName}</h1>
       </header>
       <div className="pt-24 pb-12 max-w-6xl mx-auto px-6">
+        <nav className="bg-white shadow-md rounded-xl p-4 mb-6 flex gap-4 overflow-x-auto scrollbar-hide justify-center">
+          {Object.keys(menuSections).map((section) => (
+            <button
+              key={section}
+              className="px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 shadow hover:bg-indigo-600 hover:text-white"
+            >
+              {section}
+            </button>
+          ))}
+        </nav>
         {Object.entries(menuSections).map(([section, items]) => (
           <div key={section} className="mb-12">
             <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-4 border-indigo-500 pb-2">{section}</h2>
@@ -90,7 +100,7 @@ const MenuViewer = ({ restaurantId }) => {
               {menuItems.filter(item => item.category === section).map(item => (
                 <div key={item.id} className="bg-white rounded-xl shadow-lg p-5 transition-all hover:scale-105 hover:shadow-xl cursor-pointer" onClick={() => setSelectedItem(item)}>
                   {item.image_url.toLowerCase().endsWith(".glb") ? (
-                    <ThreeDViewer modelUrl={item.image_url} autoRotate className="w-full h-40 rounded-md" />
+                    <ThreeDViewer modelUrl={item.image_url} autoRotate className="w-full h-40 rounded-md object-cover" />
                   ) : (
                     <img src={item.image_url} alt={item.name} className="w-full h-40 object-cover rounded-md" onError={(e) => e.target.src = "/default-image.jpg"} />
                   )}
@@ -103,25 +113,12 @@ const MenuViewer = ({ restaurantId }) => {
           </div>
         ))}
       </div>
-      {selectedItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedItem(null)}>
-          <div className="bg-white p-6 rounded-xl max-w-lg shadow-2xl transform scale-105 transition-all" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-2xl font-bold mb-4 text-gray-900">{selectedItem.name}</h2>
-            {selectedItem.image_url.toLowerCase().endsWith(".glb") ? (
-              <ThreeDViewer modelUrl={selectedItem.image_url} autoRotate className="w-full h-60 rounded-md" />
-            ) : (
-              <img src={selectedItem.image_url} alt={selectedItem.name} className="w-full h-60 object-cover rounded-md shadow-md" />
-            )}
-            <p className="text-gray-600 text-sm mt-4">{selectedItem.description}</p>
-            <span className="text-lg font-bold text-indigo-600 block mt-2">S/. {selectedItem.price}</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
 
 export default MenuViewer;
+
 
 
 
