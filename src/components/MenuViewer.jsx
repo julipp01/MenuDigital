@@ -105,12 +105,16 @@ const MenuViewer = ({ restaurantId }) => {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {menuItems.filter(item => item.category === section).map(item => (
                   <div key={item.id} className="bg-white rounded-lg shadow p-4">
-                    <img 
-                      src={item.image_url} 
-                      alt={item.name} 
-                      className="w-full h-40 object-cover rounded-md" 
-                      onError={(e) => e.target.src = "/default-image.jpg"} 
-                    />
+                    {item.image_url.toLowerCase().endsWith(".glb") ? (
+                      <ThreeDViewer modelUrl={item.image_url} autoRotate />
+                    ) : (
+                      <img 
+                        src={item.image_url} 
+                        alt={item.name} 
+                        className="w-full h-40 object-cover rounded-md" 
+                        onError={(e) => e.target.src = "/default-image.jpg"} 
+                      />
+                    )}
                     <h3 className="text-lg font-semibold mt-2">{item.name}</h3>
                     <p className="text-gray-600 text-sm">{item.description}</p>
                     <span className="text-lg font-bold text-indigo-600">S/. {item.price}</span>
@@ -126,6 +130,7 @@ const MenuViewer = ({ restaurantId }) => {
 };
 
 export default MenuViewer;
+
 
 
 
