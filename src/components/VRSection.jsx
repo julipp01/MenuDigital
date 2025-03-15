@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import ThreeDViewer from './ThreeDViewer';
+import React, { useState, useCallback, useMemo } from "react";
+import { motion } from "framer-motion";
+import ThreeDViewer from "./ThreeDViewer";
 
 const models = [
   { name: "Platillo 1", url: "/models/example.glb", thumbnail: "/thumbnails/example.jpg", scale: [2, 2, 2] },
@@ -18,28 +18,34 @@ const VRSection = () => {
     }
   }, [selectedModel]);
 
-  const renderedModels = useMemo(() => (
-    models.map((model) => (
-      <motion.button
-        key={model.url}
-        onClick={() => handleSelectModel(model)}
-        whileHover={{ scale: 1.1 }}
-        title={model.name}
-        className={`border-2 rounded-lg overflow-hidden transition ${
-          selectedModel.url === model.url ? 'border-orange-600' : 'border-gray-300'
-        }`}
-        style={{ width: "100px", height: "100px" }} // 🔹 Ajustar tamaño del botón
-      >
-        <img
-          src={model.thumbnail}
-          alt={model.name}
-          className="w-full h-full object-cover rounded-lg" // 🔹 Imagen ocupa todo sin deformarse
-          loading="lazy"
-          onError={() => console.error(`Error cargando thumbnail: ${model.thumbnail}`)}
-        />
-      </motion.button>
-    ))
-  ), [selectedModel]);
+  const renderedModels = useMemo(
+    () =>
+      models.map((model) => (
+        <motion.button
+          key={model.url}
+          onClick={() => handleSelectModel(model)}
+          whileHover={{ scale: 1.1 }}
+          title={model.name}
+          className={`border-2 rounded-lg overflow-hidden transition ${
+            selectedModel.url === model.url ? "border-orange-600" : "border-gray-300"
+          }`}
+          style={{ width: "80px", height: "80px" }} // Tamaño reducido para más claridad
+        >
+          <img
+            src={model.thumbnail}
+            alt={model.name}
+            className="w-full h-full object-cover rounded-lg"
+            loading="lazy"
+            onError={() => console.error(`Error cargando thumbnail: ${model.thumbnail}`)}
+          />
+        </motion.button>
+      )),
+    [selectedModel, handleSelectModel]
+  );
+
+  // Tamaño del visor: 60% de la altura del contenedor (500px)
+  const viewerHeight = 500 * 0.6; // 300px
+  const viewerWidth = viewerHeight; // Cuadrado para mantener proporciones
 
   return (
     <section id="3d" className="py-20 bg-amber-100">
@@ -57,7 +63,7 @@ const VRSection = () => {
             Visualiza tu menú en 3D y VR, permitiendo a tus clientes explorar tus platillos de manera interactiva.
           </p>
           <motion.a
-            whileHover={{ scale: 1.05, backgroundColor: '#D4AF37', color: '#fff' }}
+            whileHover={{ scale: 1.05, backgroundColor: "#D4AF37", color: "#fff" }}
             whileTap={{ scale: 0.95 }}
             href="#contacto"
             className="inline-block bg-orange-600 text-white font-semibold py-3 px-8 rounded-full shadow-lg transition duration-300"
@@ -70,15 +76,20 @@ const VRSection = () => {
           initial={{ opacity: 0, x: 50 }}
           whileInView={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.8 }}
-          className="md:w-1/2 h-[500px]"
+          className="md:w-1/2 h-[500px] flex items-center justify-center"
         >
-          <div className="relative h-full bg-white rounded-xl shadow-xl overflow-hidden border border-orange-200">
+          <div className="relative w-full max-w-[400px] h-full bg-white rounded-xl shadow-xl overflow-hidden border border-orange-200">
             <ThreeDViewer
               modelUrl={selectedModel.url}
+              width={viewerWidth} // 300px
+              height={viewerHeight} // 300px
               scale={selectedModel.scale}
               autoRotate={true}
+              backgroundColor="#f5f5f5" // Fondo claro para resaltar el modelo
+              ambientLightIntensity={1.2} // Más luz ambiental
+              directionalLightIntensity={1.0} // Más luz direccional
             />
-            {/* 🔹 Thumbnails debajo del visor */}
+            {/* Thumbnails debajo del visor */}
             <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-4">
               {renderedModels}
             </div>
