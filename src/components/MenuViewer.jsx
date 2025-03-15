@@ -1,5 +1,5 @@
 // frontend/src/components/MenuViewer.jsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import api from "@/services/api";
 import ThreeDViewer from "@/components/ThreeDViewer";
 import useSocket from "@/hooks/useSocket";
@@ -7,23 +7,25 @@ import useSocket from "@/hooks/useSocket";
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
 
 const MenuViewer = ({ restaurantId }) => {
+  console.log("[MenuViewer] Renderizando componente con restaurantId:", restaurantId);
+  
   const [menuItems, setMenuItems] = useState([]);
   const [restaurantName, setRestaurantName] = useState("Mi Restaurante");
   const [logo, setLogo] = useState(null);
   const [colors, setColors] = useState({ primary: "#FF9800", secondary: "#4CAF50" });
   const [menuSections, setMenuSections] = useState({});
   const [loading, setLoading] = useState(true);
-  const [selectedItem, setSelectedItem] = useState(null);
   const [activeSection, setActiveSection] = useState("Más Vendidos");
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { socket, isConnected } = useSocket();
 
   const fetchData = async () => {
+    console.log("[MenuViewer] Iniciando fetch de datos para restaurantId:", restaurantId);
     setLoading(true);
     try {
       const menuResponse = await api.get(`/menu/${restaurantId}`);
-      const restaurantData = menuResponse.data.restaurant || {};
+      console.log("[MenuViewer] Datos recibidos:", menuResponse.data);
       
+      const restaurantData = menuResponse.data.restaurant || {};
       setRestaurantName(restaurantData.name || "Mi Restaurante");
       setLogo(restaurantData.logo_url ? `${BACKEND_URL}${restaurantData.logo_url}` : null);
       setColors(restaurantData.colors || { primary: "#FF9800", secondary: "#4CAF50" });
@@ -31,7 +33,7 @@ const MenuViewer = ({ restaurantId }) => {
       setMenuItems(menuResponse.data.items || []);
       setActiveSection("Más Vendidos");
     } catch (error) {
-      console.error("[MenuViewer] Error cargando datos:", error.message);
+      console.error("[MenuViewer] Error al cargar datos:", error);
     } finally {
       setLoading(false);
     }
@@ -39,9 +41,16 @@ const MenuViewer = ({ restaurantId }) => {
 
   useEffect(() => {
     fetchData();
+    
     if (isConnected && socket) {
+      console.log("[MenuViewer] WebSocket conectado");
       socket.on("menu-updated", fetchData);
-      return () => socket.off("menu-updated", fetchData);
+      return () => {
+        console.log("[MenuViewer] Eliminando listener de WebSocket");
+        socket.off("menu-updated", fetchData);
+      };
+    } else {
+      console.warn("[MenuViewer] WebSocket no conectado");
     }
   }, [restaurantId, isConnected, socket]);
 
