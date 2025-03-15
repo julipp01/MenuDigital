@@ -21,13 +21,13 @@ const MediaViewer = React.memo(({ item }) => {
       </span>
     );
   }
-  if (item.imageUrl.endsWith(".glb")) {
+  if (item.imageUrl.toLowerCase().endsWith(".glb")) {
     return (
       <div className="w-16 h-16">
         <ThreeDViewer
           modelUrl={item.imageUrl}
           autoRotate
-          fallback={<div>Modelo no disponible</div>}
+          fallback={<div className="text-xs text-gray-500">Modelo no disponible</div>}
         />
       </div>
     );
@@ -168,7 +168,7 @@ const MenuEditor = ({ restaurantId }) => {
 
       const items = (menuResponse.data.items || []).map((item) => ({
         ...item,
-        imageUrl: buildImageUrl(item.image_url),
+        imageUrl: buildImageUrl(item.image_url), // Aseguramos que la URL sea completa
       }));
       const validatedItems = await Promise.all(
         items.map(async (item) => ({
@@ -338,14 +338,23 @@ const MenuEditor = ({ restaurantId }) => {
   const handleImageUpload = useCallback(
     async (e) => {
       const file = e.target.files[0];
+      if (!file) return;
       const newImageUrl = await uploadFile(file, `/menu/${restaurantId}/upload`, "file", {
         itemId: editingItem?.id,
       });
       if (newImageUrl) {
-        setNewItem((prev) => ({ ...prev, imageUrl: newImageUrl }));
+        if (editingItem) {
+          // Actualizar el ítem en edición con la nueva URL y guardar
+          const updatedItem = { ...editingItem, imageUrl: newImageUrl };
+          setNewItem(updatedItem);
+          await api.put(`/menu/${restaurantId}/${editingItem.id}`, updatedItem, { timeout: 20000 });
+          await fetchData(); // Recargar datos para reflejar el cambio
+        } else {
+          setNewItem((prev) => ({ ...prev, imageUrl: newImageUrl }));
+        }
       }
     },
-    [restaurantId, uploadFile, editingItem]
+    [restaurantId, uploadFile, editingItem, fetchData]
   );
 
   const handleAddOrUpdateItem = useCallback(
