@@ -18,7 +18,8 @@ const ThreeDViewer = ({
   const mountRef = useRef(null);
   const controlsRef = useRef(null);
   const rendererRef = useRef(null);
-  const [isARActive, setIsARActive] = useState(false); // Estado para modo AR
+  const modelRef = useRef(null); // Referencia al modelo cargado
+  const [isARActive, setIsARActive] = useState(false);
 
   useEffect(() => {
     if (!modelUrl) {
@@ -37,12 +38,8 @@ const ThreeDViewer = ({
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.xr.enabled = true;
 
-    // Fondo por defecto (no transparente en AR)
-    if (backgroundColor && !isARActive) {
-      renderer.setClearColor(backgroundColor, 1);
-    } else if (isARActive) {
-      renderer.setClearColor(0x000000, 0); // Fondo transparente en AR
-    }
+    // Fondo
+    renderer.setClearColor(backgroundColor, isARActive ? 0 : 1); // Transparente en AR, sólido en modo normal
 
     const currentMount = mountRef.current;
     if (currentMount) {
@@ -50,27 +47,30 @@ const ThreeDViewer = ({
       currentMount.appendChild(renderer.domElement);
     }
 
-    // Iluminación mejorada para AR
+    // Iluminación
     const ambientLight = new THREE.AmbientLight(0xffffff, ambientLightIntensity);
     scene.add(ambientLight);
     const directionalLight = new THREE.DirectionalLight(0xffffff, directionalLightIntensity);
-    directionalLight.position.set(5, 10, 7.5).normalize();
+    directionalLight.position.set(5, 10, 7.5);
     scene.add(directionalLight);
 
     // Cargar modelo
-    let model;
     const loader = new GLTFLoader();
     loader.load(
       modelUrl,
       (gltf) => {
-        model = gltf.scene;
-        model.scale.set(...scale);
-        scene.add(model);
-        const box = new THREE.Box3().setFromObject(model);
+        console.log("[ThreeDViewer] Modelo cargado:", modelUrl);
+        modelRef.current = gltf.scene;
+        modelRef.current.scale.set(...scale);
+        modelRef.current.visible = true; // Asegurar visibilidad
+        scene.add(modelRef.current);
+
+        // Centrar modelo en modo normal
+        const box = new THREE.Box3().setFromObject(modelRef.current);
         const center = box.getCenter(new THREE.Vector3());
-        model.position.sub(center);
+        modelRef.current.position.sub(center);
         const size = box.getSize(new THREE.Vector3()).length();
-        camera.position.z = size * 1.2;
+        camera.position.z = size * 1.5;
       },
       (progress) => console.log("[ThreeDViewer] Progreso:", (progress.loaded / progress.total) * 100, "%"),
       (error) => {
@@ -96,31 +96,19 @@ const ThreeDViewer = ({
     let hitTestSourceRequested = false;
     let reticle = null;
 
-    const setupAR = (controller) => {
-      renderer.xr.addEventListener("sessionstart", () => {
-        setIsARActive(true);
-        controls.enabled = false; // Desactivar OrbitControls en AR
-        renderer.setClearColor(0x000000, 0); // Fondo transparente en AR
+    const initializeAR = () => {
+      setIsARActive(true);
+      controls.enabled = false;
+      renderer.setClearColor(0x000000, 0); // Fondo transparente en AR
 
-        // Retícula para indicar dónde colocar el modelo
-        reticle = new THREE.Mesh(
-          new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
-          new THREE.MeshBasicMaterial({ color: 0xffffff })
-        );
-        reticle.matrixAutoUpdate = false;
-        reticle.visible = false;
-        scene.add(reticle);
-      });
-
-      renderer.xr.addEventListener("sessionend", () => {
-        setIsARActive(false);
-        controls.enabled = true;
-        renderer.setClearColor(backgroundColor, 1);
-        if (reticle) {
-          scene.remove(reticle);
-          reticle = null;
-        }
-      });
+      // Retícula
+      reticle = new THREE.Mesh(
+        new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
+      scene.add(reticle);
     };
 
     if (currentMount) {
@@ -128,44 +116,49 @@ const ThreeDViewer = ({
         if (supported) {
           const arButton = ARButton.createButton(renderer, {
             requiredFeatures: ["hit-test"],
-            onSessionReady: setupAR,
+            onSessionReady: () => {
+              initializeAR();
+            },
           });
           arButton.style.position = "absolute";
           arButton.style.bottom = "10px";
           arButton.style.right = "10px";
           currentMount.appendChild(arButton);
+        } else {
+          console.warn("[ThreeDViewer] AR no soportado en este dispositivo");
         }
       });
     }
 
-    // Animación
+    // Animación y renderizado
     let animationFrameId;
-    const animate = () => {
+    const animate = (time, xrFrame) => {
       animationFrameId = requestAnimationFrame(animate);
 
       if (isARActive && renderer.xr.isPresenting) {
         const session = renderer.xr.getSession();
-        const viewerReferenceSpace = renderer.xr.getReferenceSpace();
-        const frame = session.requestAnimationFrame();
+        const referenceSpace = renderer.xr.getReferenceSpace();
 
-        if (frame && hitTestSourceRequested === false) {
-          session.requestReferenceSpace("viewer").then((referenceSpace) => {
-            session.requestHitTestSource({ space: referenceSpace }).then((source) => {
+        if (!hitTestSourceRequested) {
+          session.requestReferenceSpace("viewer").then((viewerSpace) => {
+            session.requestHitTestSource({ space: viewerSpace }).then((source) => {
               hitTestSource = source;
+              hitTestSourceRequested = true;
+              console.log("[ThreeDViewer] Hit-test source inicializado");
             });
           });
-          hitTestSourceRequested = true;
         }
 
-        if (hitTestSource) {
-          const hitTestResults = frame.getHitTestResults(hitTestSource);
-          if (hitTestResults.length > 0 && model) {
+        if (hitTestSource && xrFrame) {
+          const hitTestResults = xrFrame.getHitTestResults(hitTestSource);
+          if (hitTestResults.length > 0 && modelRef.current) {
             const hit = hitTestResults[0];
-            const pose = hit.getPose(viewerReferenceSpace);
+            const pose = hit.getPose(referenceSpace);
             reticle.visible = true;
             reticle.matrix.fromArray(pose.transform.matrix);
-            model.position.setFromMatrixPosition(reticle.matrix);
-            model.visible = true;
+            modelRef.current.position.setFromMatrixPosition(reticle.matrix);
+            modelRef.current.visible = true;
+            console.log("[ThreeDViewer] Modelo posicionado en AR:", modelRef.current.position);
           } else if (reticle) {
             reticle.visible = false;
           }
@@ -176,12 +169,12 @@ const ThreeDViewer = ({
 
       renderer.render(scene, camera);
     };
-    animate();
+    renderer.setAnimationLoop(animate);
 
     // Limpieza
     return () => {
       console.log("[ThreeDViewer] Limpiando:", modelUrl);
-      cancelAnimationFrame(animationFrameId);
+      renderer.setAnimationLoop(null); // Detener animación
       if (currentMount && renderer.domElement && currentMount.contains(renderer.domElement)) {
         currentMount.removeChild(renderer.domElement);
       }
@@ -191,7 +184,7 @@ const ThreeDViewer = ({
       if (hitTestSource) hitTestSource.cancel();
       hitTestSourceRequested = false;
     };
-  }, [modelUrl, width, height, scale, autoRotate, backgroundColor, ambientLightIntensity, directionalLightIntensity, fallback, isARActive]);
+  }, [modelUrl, width, height, scale, autoRotate, backgroundColor, ambientLightIntensity, directionalLightIntensity, fallback]);
 
   return <div ref={mountRef} className="relative" style={{ width: `${width}px`, height: `${height}px` }} />;
 };
