@@ -8,6 +8,13 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.endsWith("/")
   ? import.meta.env.VITE_BACKEND_URL
   : `${import.meta.env.VITE_BACKEND_URL}/` || "http://localhost:5000/";
 
+const buildImageUrl = (url) => {
+  if (!url) return "/default-image.jpg";
+  if (url.startsWith("http")) return url;
+  const cleanUrl = url.startsWith("/uploads/") ? url : `/uploads/${url}`;
+  return `${BACKEND_URL}${cleanUrl}`.replace(/\/+/g, "/");
+};
+
 const MenuViewer = ({ restaurantId }) => {
   console.log("[MenuViewer] Renderizando componente con restaurantId:", restaurantId);
   
@@ -29,10 +36,15 @@ const MenuViewer = ({ restaurantId }) => {
       
       const restaurantData = menuResponse.data.restaurant || {};
       setRestaurantName(restaurantData.name || "Mi Restaurante");
-      setLogo(restaurantData.logo_url ? `${BACKEND_URL}${restaurantData.logo_url}` : null);
+      setLogo(buildImageUrl(restaurantData.logo_url));
       setColors(restaurantData.colors || { primary: "#FF9800", secondary: "#4CAF50" });
       setMenuSections(restaurantData.sections || { "Platos Principales": [], "Postres": [], "Bebidas": [] });
-      setMenuItems(menuResponse.data.items || []);
+      
+      const processedItems = (menuResponse.data.items || []).map((item) => ({
+        ...item,
+        image_url: buildImageUrl(item.image_url)
+      }));
+      setMenuItems(processedItems);
       setActiveSection("Más Vendidos");
     } catch (error) {
       console.error("[MenuViewer] Error al cargar datos:", error);
@@ -94,7 +106,7 @@ const MenuViewer = ({ restaurantId }) => {
                 {menuItems.filter(item => item.category === section).map(item => (
                   <div key={item.id} className="bg-white rounded-lg shadow p-4">
                     <img 
-                      src={item.image_url ? `${BACKEND_URL}${item.image_url}` : "/default-image.jpg"} 
+                      src={item.image_url} 
                       alt={item.name} 
                       className="w-full h-40 object-cover rounded-md" 
                       onError={(e) => e.target.src = "/default-image.jpg"} 
@@ -114,6 +126,7 @@ const MenuViewer = ({ restaurantId }) => {
 };
 
 export default MenuViewer;
+
 
 
 
