@@ -13,6 +13,8 @@ const ThreeDViewer = React.memo(({
   backgroundColor = "#f5f5f5",
   ambientLightIntensity = 1.5,
   directionalLightIntensity = 1.3,
+  enableAR = false,
+  arScale = [0.1, 0.1, 0.1],
   fallback = <div className="text-xs text-gray-500">Cargando modelo...</div>,
 }) => {
   const mountRef = useRef(null);
@@ -92,20 +94,44 @@ const ThreeDViewer = React.memo(({
       controls.enabled = false;
       renderer.setClearColor(0x000000, 0);
 
-      reticle = new THREE.Mesh(
-        new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
-        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      // Crear un retículo más estético
+      reticle = new THREE.Group();
+
+      // Círculo principal con borde suave
+      const outerCircle = new THREE.Mesh(
+        new THREE.CircleGeometry(0.2, 32),
+        new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.3,
+          side: THREE.DoubleSide,
+        })
       );
+      outerCircle.rotation.x = -Math.PI / 2;
+
+      // Círculo interior (punto central)
+      const innerCircle = new THREE.Mesh(
+        new THREE.CircleGeometry(0.02, 32),
+        new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          side: THREE.DoubleSide,
+        })
+      );
+      innerCircle.rotation.x = -Math.PI / 2;
+
+      reticle.add(outerCircle);
+      reticle.add(innerCircle);
+
       reticle.matrixAutoUpdate = false;
       reticle.visible = false;
       scene.add(reticle);
 
       if (modelRef.current) {
-        modelRef.current.scale.set(0.01, 0.01, 0.01); // Escala pequeña para AR
+        modelRef.current.scale.set(...arScale); // Usar la escala específica para AR
       }
     };
 
-    if (currentMount) {
+    if (currentMount && enableAR) {
       navigator.xr.isSessionSupported("immersive-ar").then((supported) => {
         if (supported) {
           const arButton = ARButton.createButton(renderer, {
@@ -156,9 +182,14 @@ const ThreeDViewer = React.memo(({
 
             const position = new THREE.Vector3();
             position.setFromMatrixPosition(reticle.matrix);
+
+            // Ajustar la posición del modelo
             modelRef.current.position.copy(position);
-            modelRef.current.position.z -= 0.3;
+            modelRef.current.position.y += 0.05; // Desplazamiento vertical para evitar que el modelo esté "hundido"
             modelRef.current.visible = true;
+
+            // Rotar el modelo para que esté orientado correctamente (opcional)
+            modelRef.current.rotation.set(0, 0, 0); // Ajustar según la orientación deseada
           } else {
             reticle.visible = false;
             modelRef.current.visible = false;
@@ -184,7 +215,7 @@ const ThreeDViewer = React.memo(({
       if (hitTestSource) hitTestSource.cancel();
       hitTestSourceRequested = false;
     };
-  }, [modelUrl, width, height, scale, autoRotate, backgroundColor, ambientLightIntensity, directionalLightIntensity]);
+  }, [modelUrl, width, height, scale, autoRotate, backgroundColor, ambientLightIntensity, directionalLightIntensity, enableAR, arScale]);
 
   return (
     <Suspense fallback={fallback}>
