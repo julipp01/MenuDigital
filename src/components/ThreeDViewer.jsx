@@ -8,7 +8,7 @@ const ThreeDViewer = ({
   modelUrl,
   width = 64,
   height = 64,
-  scale = [1, 1, 1],
+  scale = [1, 1, 1], // Escala base para modo normal
   autoRotate = false,
   backgroundColor = "#f5f5f5",
   ambientLightIntensity = 1.5,
@@ -18,7 +18,7 @@ const ThreeDViewer = ({
   const mountRef = useRef(null);
   const controlsRef = useRef(null);
   const rendererRef = useRef(null);
-  const modelRef = useRef(null); // Referencia al modelo cargado
+  const modelRef = useRef(null);
   const [isARActive, setIsARActive] = useState(false);
 
   useEffect(() => {
@@ -39,7 +39,7 @@ const ThreeDViewer = ({
     renderer.xr.enabled = true;
 
     // Fondo
-    renderer.setClearColor(backgroundColor, isARActive ? 0 : 1); // Transparente en AR, sólido en modo normal
+    renderer.setClearColor(backgroundColor, isARActive ? 0 : 1);
 
     const currentMount = mountRef.current;
     if (currentMount) {
@@ -61,8 +61,10 @@ const ThreeDViewer = ({
       (gltf) => {
         console.log("[ThreeDViewer] Modelo cargado:", modelUrl);
         modelRef.current = gltf.scene;
+
+        // Escala inicial para modo normal
         modelRef.current.scale.set(...scale);
-        modelRef.current.visible = true; // Asegurar visibilidad
+        modelRef.current.visible = true;
         scene.add(modelRef.current);
 
         // Centrar modelo en modo normal
@@ -109,6 +111,12 @@ const ThreeDViewer = ({
       reticle.matrixAutoUpdate = false;
       reticle.visible = false;
       scene.add(reticle);
+
+      // Ajustar escala para AR
+      if (modelRef.current) {
+        modelRef.current.scale.set(0.2, 0.2, 0.2); // Escala reducida para AR
+        console.log("[ThreeDViewer] Escala ajustada para AR:", modelRef.current.scale);
+      }
     };
 
     if (currentMount) {
@@ -149,18 +157,24 @@ const ThreeDViewer = ({
           });
         }
 
-        if (hitTestSource && xrFrame) {
+        if (hitTestSource && xrFrame && modelRef.current) {
           const hitTestResults = xrFrame.getHitTestResults(hitTestSource);
-          if (hitTestResults.length > 0 && modelRef.current) {
+          if (hitTestResults.length > 0) {
             const hit = hitTestResults[0];
             const pose = hit.getPose(referenceSpace);
             reticle.visible = true;
             reticle.matrix.fromArray(pose.transform.matrix);
-            modelRef.current.position.setFromMatrixPosition(reticle.matrix);
+
+            // Posicionar modelo a una distancia razonable
+            const position = new THREE.Vector3();
+            position.setFromMatrixPosition(reticle.matrix);
+            modelRef.current.position.copy(position);
+            modelRef.current.position.z -= 0.5; // Alejar 0.5 metros de la cámara
             modelRef.current.visible = true;
             console.log("[ThreeDViewer] Modelo posicionado en AR:", modelRef.current.position);
-          } else if (reticle) {
+          } else {
             reticle.visible = false;
+            modelRef.current.visible = false; // Ocultar si no hay superficie
           }
         }
       } else if (!isARActive) {
@@ -174,7 +188,7 @@ const ThreeDViewer = ({
     // Limpieza
     return () => {
       console.log("[ThreeDViewer] Limpiando:", modelUrl);
-      renderer.setAnimationLoop(null); // Detener animación
+      renderer.setAnimationLoop(null);
       if (currentMount && renderer.domElement && currentMount.contains(renderer.domElement)) {
         currentMount.removeChild(renderer.domElement);
       }
