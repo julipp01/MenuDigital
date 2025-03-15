@@ -112,9 +112,9 @@ const ThreeDViewer = ({
       reticle.visible = false;
       scene.add(reticle);
 
-      // Ajustar escala para AR
+      // Ajustar escala para AR (más pequeña)
       if (modelRef.current) {
-        modelRef.current.scale.set(0.2, 0.2, 0.2); // Escala reducida para AR
+        modelRef.current.scale.set(0.05, 0.05, 0.05); // Escala muy pequeña para AR
         console.log("[ThreeDViewer] Escala ajustada para AR:", modelRef.current.scale);
       }
     };
@@ -165,16 +165,16 @@ const ThreeDViewer = ({
             reticle.visible = true;
             reticle.matrix.fromArray(pose.transform.matrix);
 
-            // Posicionar modelo a una distancia razonable
+            // Posicionar modelo
             const position = new THREE.Vector3();
             position.setFromMatrixPosition(reticle.matrix);
             modelRef.current.position.copy(position);
-            modelRef.current.position.z -= 0.5; // Alejar 0.5 metros de la cámara
+            modelRef.current.position.z -= 0.5; // Distancia inicial razonable
             modelRef.current.visible = true;
             console.log("[ThreeDViewer] Modelo posicionado en AR:", modelRef.current.position);
           } else {
             reticle.visible = false;
-            modelRef.current.visible = false; // Ocultar si no hay superficie
+            modelRef.current.visible = false;
           }
         }
       } else if (!isARActive) {
