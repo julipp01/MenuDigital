@@ -44,11 +44,17 @@ const MenuViewer = ({ restaurantId }) => {
     
     if (isConnected && socket) {
       console.log("[MenuViewer] WebSocket conectado");
-      socket.on("menu-updated", fetchData);
-      return () => {
-        console.log("[MenuViewer] Eliminando listener de WebSocket");
-        socket.off("menu-updated", fetchData);
-      };
+      socket.addEventListener("message", (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          console.log("[MenuViewer] Mensaje recibido por WebSocket:", message);
+          if (message.type === "menu-changed") {
+            fetchData();
+          }
+        } catch (error) {
+          console.error("[MenuViewer] Error al procesar mensaje WebSocket:", error.message);
+        }
+      });
     } else {
       console.warn("[MenuViewer] WebSocket no conectado");
     }
@@ -101,4 +107,5 @@ const MenuViewer = ({ restaurantId }) => {
 };
 
 export default MenuViewer;
+
 
