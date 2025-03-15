@@ -4,7 +4,9 @@ import api from "@/services/api";
 import ThreeDViewer from "@/components/ThreeDViewer";
 import useSocket from "@/hooks/useSocket";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.endsWith("/") 
+  ? import.meta.env.VITE_BACKEND_URL
+  : `${import.meta.env.VITE_BACKEND_URL}/` || "http://localhost:5000/";
 
 const MenuViewer = ({ restaurantId }) => {
   console.log("[MenuViewer] Renderizando componente con restaurantId:", restaurantId);
@@ -91,7 +93,12 @@ const MenuViewer = ({ restaurantId }) => {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {menuItems.filter(item => item.category === section).map(item => (
                   <div key={item.id} className="bg-white rounded-lg shadow p-4">
-                    <img src={BACKEND_URL + item.image_url} alt={item.name} className="w-full h-40 object-cover rounded-md" />
+                    <img 
+                      src={item.image_url ? `${BACKEND_URL}${item.image_url}` : "/default-image.jpg"} 
+                      alt={item.name} 
+                      className="w-full h-40 object-cover rounded-md" 
+                      onError={(e) => e.target.src = "/default-image.jpg"} 
+                    />
                     <h3 className="text-lg font-semibold mt-2">{item.name}</h3>
                     <p className="text-gray-600 text-sm">{item.description}</p>
                     <span className="text-lg font-bold text-indigo-600">S/. {item.price}</span>
@@ -107,5 +114,6 @@ const MenuViewer = ({ restaurantId }) => {
 };
 
 export default MenuViewer;
+
 
 
