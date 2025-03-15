@@ -25,6 +25,7 @@ const MenuViewer = ({ restaurantId }) => {
   const [menuSections, setMenuSections] = useState({});
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState("Más Vendidos");
+  const [selectedItem, setSelectedItem] = useState(null);
   const { socket, isConnected } = useSocket();
 
   const fetchData = async () => {
@@ -79,34 +80,21 @@ const MenuViewer = ({ restaurantId }) => {
       <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-indigo-500"></div>
     </div>
   ) : (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 font-sans">
-      <header className="fixed top-0 left-0 right-0 bg-white shadow p-6 z-20 flex items-center justify-center">
+    <div className="min-h-screen bg-gradient-to-b from-gray-100 to-gray-300 font-sans">
+      <header className="fixed top-0 left-0 right-0 bg-white shadow-md p-6 z-20 flex items-center justify-center rounded-b-xl">
         {logo && <img src={logo} alt={restaurantName} className="w-16 h-16 rounded-full shadow-lg mr-4" />}
-        <h1 className="text-4xl font-extrabold" style={{ color: colors.primary }}>{restaurantName}</h1>
+        <h1 className="text-4xl font-bold" style={{ color: colors.primary }}>{restaurantName}</h1>
       </header>
       <div className="pt-24 pb-12 max-w-7xl mx-auto px-4">
-        <nav className="bg-white shadow-md p-3 rounded-lg flex gap-2 overflow-x-auto scrollbar-hide">
-          {["Más Vendidos", ...Object.keys(menuSections)].map((section) => (
-            <button
-              key={section}
-              onClick={() => setActiveSection(section)}
-              className={`px-4 py-2 text-sm font-semibold rounded-full transition-all duration-200 ${
-                activeSection === section ? "text-white bg-indigo-600" : "text-gray-700 bg-gray-200"
-              }`}
-            >
-              {section}
-            </button>
-          ))}
-        </nav>
         <section className="mt-6">
           {Object.entries(menuSections).map(([section, items]) => (
-            <div key={section} className="mb-8">
-              <h2 className="text-2xl font-bold text-gray-800 mb-4">{section}</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div key={section} className="mb-12">
+              <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-indigo-500 pb-2">{section}</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                 {menuItems.filter(item => item.category === section).map(item => (
-                  <div key={item.id} className="bg-white rounded-lg shadow p-4">
+                  <div key={item.id} className="bg-white rounded-xl shadow-lg p-6 transition-all hover:scale-105 hover:shadow-2xl cursor-pointer" onClick={() => setSelectedItem(item)}>
                     {item.image_url.toLowerCase().endsWith(".glb") ? (
-                      <ThreeDViewer modelUrl={item.image_url} autoRotate />
+                      <ThreeDViewer modelUrl={item.image_url} autoRotate className="w-full h-40 rounded-md" />
                     ) : (
                       <img 
                         src={item.image_url} 
@@ -115,9 +103,7 @@ const MenuViewer = ({ restaurantId }) => {
                         onError={(e) => e.target.src = "/default-image.jpg"} 
                       />
                     )}
-                    <h3 className="text-lg font-semibold mt-2">{item.name}</h3>
-                    <p className="text-gray-600 text-sm">{item.description}</p>
-                    <span className="text-lg font-bold text-indigo-600">S/. {item.price}</span>
+                    <h3 className="text-lg font-semibold mt-4 text-gray-900">{item.name}</h3>
                   </div>
                 ))}
               </div>
@@ -125,11 +111,27 @@ const MenuViewer = ({ restaurantId }) => {
           ))}
         </section>
       </div>
+      {selectedItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedItem(null)}>
+          <div className="bg-white p-6 rounded-xl max-w-lg shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-2xl font-bold mb-4">{selectedItem.name}</h2>
+            {selectedItem.image_url.toLowerCase().endsWith(".glb") ? (
+              <ThreeDViewer modelUrl={selectedItem.image_url} autoRotate className="w-full h-60 rounded-md" />
+            ) : (
+              <img src={selectedItem.image_url} alt={selectedItem.name} className="w-full h-60 object-cover rounded-md" />
+            )}
+            <p className="text-gray-600 text-sm mt-4">{selectedItem.description}</p>
+            <span className="text-lg font-bold text-indigo-600 block mt-2">S/. {selectedItem.price}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default MenuViewer;
+
+
 
 
 
