@@ -1,130 +1,229 @@
-// frontend/src/components/MenuViewer.jsx
-import React, { useState, useEffect, useRef } from "react";
-import api from "@/services/api";
-import ThreeDViewer from "@/components/ThreeDViewer";
-import useSocket from "@/hooks/useSocket";
+import React, { useRef, useEffect, useState, Suspense } from "react";
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import { ARButton } from "three/examples/jsm/webxr/ARButton";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.endsWith("/") 
-  ? import.meta.env.VITE_BACKEND_URL
-  : `${import.meta.env.VITE_BACKEND_URL}/` || "http://localhost:5000/";
-
-const buildImageUrl = (url) => {
-  if (!url) return "/default-image.jpg";
-  if (url.startsWith("http")) return url;
-  const cleanUrl = url.startsWith("/uploads/") ? url : `/uploads/${url}`;
-  return `${BACKEND_URL}${cleanUrl}`.replace(/\/+/g, "/");
-};
-
-const MenuViewer = ({ restaurantId }) => {
-  console.log("[MenuViewer] Renderizando componente con restaurantId:", restaurantId);
-  
-  const [menuItems, setMenuItems] = useState([]);
-  const [restaurantName, setRestaurantName] = useState("Mi Restaurante");
-  const [logo, setLogo] = useState(null);
-  const [colors, setColors] = useState({ primary: "#FF9800", secondary: "#4CAF50" });
-  const [menuSections, setMenuSections] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [selectedItem, setSelectedItem] = useState(null);
-  const [cart, setCart] = useState([]);
-  const sectionRefs = useRef({});
-  const { socket, isConnected } = useSocket();
-
-  const fetchData = async () => {
-    console.log("[MenuViewer] Iniciando fetch de datos para restaurantId:", restaurantId);
-    setLoading(true);
-    try {
-      const menuResponse = await api.get(`/menu/${restaurantId}`);
-      console.log("[MenuViewer] Datos recibidos:", menuResponse.data);
-      
-      const restaurantData = menuResponse.data.restaurant || {};
-      setRestaurantName(restaurantData.name || "Mi Restaurante");
-      setLogo(buildImageUrl(restaurantData.logo_url));
-      setColors(restaurantData.colors || { primary: "#FF9800", secondary: "#4CAF50" });
-      setMenuSections(restaurantData.sections || { "Platos Principales": [], "Postres": [], "Bebidas": [] });
-      
-      const processedItems = (menuResponse.data.items || []).map((item) => ({
-        ...item,
-        image_url: buildImageUrl(item.image_url)
-      }));
-      setMenuItems(processedItems);
-    } catch (error) {
-      console.error("[MenuViewer] Error al cargar datos:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const scrollToSection = (section) => {
-    sectionRefs.current[section]?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
-  const addToCart = (item) => {
-    setCart((prevCart) => [...prevCart, item]);
-  };
+const ThreeDViewer = React.memo(({
+  modelUrl,
+  width = 64,
+  height = 64,
+  scale = [1, 1, 1],
+  autoRotate = false,
+  backgroundColor = "#f5f5f5",
+  ambientLightIntensity = 1.5,
+  directionalLightIntensity = 1.3,
+  arScale = [0.1, 0.1, 0.1],
+  fallback = <div className="text-xs text-gray-500">Cargando modelo...</div>,
+}) => {
+  const mountRef = useRef(null);
+  const controlsRef = useRef(null);
+  const rendererRef = useRef(null);
+  const modelRef = useRef(null);
+  const [isARActive, setIsARActive] = useState(false);
 
   useEffect(() => {
-    fetchData();
-    if (isConnected && socket) {
-      console.log("[MenuViewer] WebSocket conectado");
-      socket.addEventListener("message", (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          console.log("[MenuViewer] Mensaje recibido por WebSocket:", message);
-          if (message.type === "menu-changed") {
-            fetchData();
-          }
-        } catch (error) {
-          console.error("[MenuViewer] Error al procesar mensaje WebSocket:", error.message);
+    if (!modelUrl) return;
+
+    // Configuración básica
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    rendererRef.current = renderer;
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.xr.enabled = true;
+    renderer.setClearColor(backgroundColor, isARActive ? 0 : 1);
+
+    const currentMount = mountRef.current;
+    if (currentMount) {
+      currentMount.innerHTML = "";
+      currentMount.appendChild(renderer.domElement);
+    }
+
+    // Iluminación
+    const ambientLight = new THREE.AmbientLight(0xffffff, ambientLightIntensity);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, directionalLightIntensity);
+    directionalLight.position.set(5, 10, 7.5);
+    scene.add(directionalLight);
+
+    // Cargar modelo
+    const loader = new GLTFLoader();
+    loader.load(
+      modelUrl,
+      (gltf) => {
+        modelRef.current = gltf.scene;
+        modelRef.current.scale.set(...scale); // Escala para modo normal
+        modelRef.current.visible = true;
+        scene.add(modelRef.current);
+
+        const box = new THREE.Box3().setFromObject(modelRef.current);
+        const center = box.getCenter(new THREE.Vector3());
+        modelRef.current.position.sub(center);
+        const size = box.getSize(new THREE.Vector3()).length();
+        camera.position.z = size * 1.5;
+      },
+      undefined,
+      (error) => {
+        console.error("[ThreeDViewer] Error al cargar modelo:", error.message);
+        if (currentMount) {
+          currentMount.innerHTML = "";
+          currentMount.appendChild(fallback);
+        }
+      }
+    );
+
+    // Controles para modo no-AR
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controlsRef.current = controls;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.enableZoom = true;
+    controls.enablePan = false;
+    controls.autoRotate = autoRotate;
+
+    // Configuración AR
+    let hitTestSource = null;
+    let hitTestSourceRequested = false;
+    let reticle = null;
+
+    const initializeAR = () => {
+      setIsARActive(true);
+      controls.enabled = false;
+      renderer.setClearColor(0x000000, 0);
+
+      // Crear un retículo más estético
+      reticle = new THREE.Group();
+
+      // Círculo principal con borde suave
+      const outerCircle = new THREE.Mesh(
+        new THREE.CircleGeometry(0.2, 32),
+        new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.3,
+          side: THREE.DoubleSide,
+        })
+      );
+      outerCircle.rotation.x = -Math.PI / 2;
+
+      // Círculo interior (punto central)
+      const innerCircle = new THREE.Mesh(
+        new THREE.CircleGeometry(0.02, 32),
+        new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          side: THREE.DoubleSide,
+        })
+      );
+      innerCircle.rotation.x = -Math.PI / 2;
+
+      reticle.add(outerCircle);
+      reticle.add(innerCircle);
+
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
+      scene.add(reticle);
+
+      if (modelRef.current) {
+        modelRef.current.scale.set(...arScale); // Usar la escala específica para AR
+      }
+    };
+
+    // Habilitar AR solo para "example.glb"
+    const isExampleModel = modelUrl === "example.glb";
+    if (currentMount && isExampleModel) {
+      navigator.xr.isSessionSupported("immersive-ar").then((supported) => {
+        if (supported) {
+          const arButton = ARButton.createButton(renderer, {
+            requiredFeatures: ["hit-test"],
+            onSessionReady: () => {
+              initializeAR();
+            },
+          });
+          arButton.style.position = "absolute";
+          arButton.style.bottom = "10px";
+          arButton.style.right = "10px";
+          currentMount.appendChild(arButton);
         }
       });
-    } else {
-      console.warn("[MenuViewer] WebSocket no conectado");
     }
-  }, [restaurantId, isConnected, socket]);
 
-  return loading ? (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-indigo-500"></div>
-    </div>
-  ) : (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-200 font-sans">
-      <header className="fixed top-0 left-0 right-0 bg-white shadow-md p-6 z-20 flex items-center justify-between rounded-b-xl">
-        {logo && <img src={logo} alt={restaurantName} className="w-16 h-16 rounded-full shadow-lg" />}
-        <h1 className="text-4xl font-bold text-gray-900" style={{ color: colors.primary }}>{restaurantName}</h1>
-      </header>
-      <div className="pt-24 pb-12 max-w-6xl mx-auto px-6">
-        <nav className="bg-white shadow-md rounded-xl p-4 mb-6 flex gap-4 overflow-x-auto scrollbar-hide justify-center">
-          {Object.keys(menuSections).map((section) => (
-            <button
-              key={section}
-              onClick={() => scrollToSection(section)}
-              className="px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 shadow hover:bg-indigo-600 hover:text-white"
-            >
-              {section}
-            </button>
-          ))}
-        </nav>
-        {Object.entries(menuSections).map(([section, items]) => (
-          <div key={section} ref={(el) => (sectionRefs.current[section] = el)} className="mb-12">
-            <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-4 border-indigo-500 pb-2">{section}</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {menuItems.filter(item => item.category === section).map(item => (
-                <div key={item.id} className="bg-white rounded-xl shadow-lg p-5 transition-all hover:scale-105 hover:shadow-xl cursor-pointer" onClick={() => setSelectedItem(item)}>
-                  <img src={item.image_url} alt={item.name} className="w-full h-40 object-cover rounded-md" />
-                  <h3 className="text-lg font-semibold mt-4 text-gray-900">{item.name}</h3>
-                  <p className="text-gray-600 text-sm">{item.description}</p>
-                  <span className="text-lg font-bold text-indigo-600">S/. {item.price}</span>
-                  <button className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-lg w-full hover:bg-indigo-700" onClick={(e) => { e.stopPropagation(); addToCart(item); }}>Añadir al pedido</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+    // Animación optimizada
+    let lastFrameTime = 0;
+    const animate = (time) => {
+      const delta = time - lastFrameTime;
+      if (delta < 16) { // Limitar a ~60 FPS
+        requestAnimationFrame(animate);
+        return;
+      }
+      lastFrameTime = time;
+
+      if (isARActive && renderer.xr.isPresenting) {
+        const session = renderer.xr.getSession();
+        const referenceSpace = renderer.xr.getReferenceSpace();
+        const frame = session.requestAnimationFrame();
+
+        if (!hitTestSourceRequested) {
+          session.requestReferenceSpace("viewer").then((viewerSpace) => {
+            session.requestHitTestSource({ space: viewerSpace }).then((source) => {
+              hitTestSource = source;
+              hitTestSourceRequested = true;
+            });
+          });
+        }
+
+        if (hitTestSource && frame && modelRef.current) {
+          const hitTestResults = frame.getHitTestResults(hitTestSource);
+          if (hitTestResults.length > 0) {
+            const hit = hitTestResults[0];
+            const pose = hit.getPose(referenceSpace);
+            reticle.visible = true;
+            reticle.matrix.fromArray(pose.transform.matrix);
+
+            const position = new THREE.Vector3();
+            position.setFromMatrixPosition(reticle.matrix);
+
+            // Ajustar la posición del modelo
+            modelRef.current.position.copy(position);
+            modelRef.current.position.y += 0.05; // Desplazamiento vertical para evitar que el modelo esté "hundido"
+            modelRef.current.visible = true;
+
+            // Rotar el modelo para que esté orientado correctamente (opcional)
+            modelRef.current.rotation.set(0, 0, 0); // Ajustar según la orientación deseada
+          } else {
+            reticle.visible = false;
+            modelRef.current.visible = false;
+          }
+        }
+      } else if (!isARActive && controlsRef.current) {
+        controlsRef.current.update();
+      }
+
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+
+    // Limpieza
+    return () => {
+      if (currentMount && renderer.domElement && currentMount.contains(renderer.domElement)) {
+        currentMount.removeChild(renderer.domElement);
+      }
+      if (controlsRef.current) controlsRef.current.dispose();
+      if (rendererRef.current) rendererRef.current.dispose();
+      scene.clear();
+      if (hitTestSource) hitTestSource.cancel();
+      hitTestSourceRequested = false;
+    };
+  }, [modelUrl, width, height, scale, autoRotate, backgroundColor, ambientLightIntensity, directionalLightIntensity, arScale]);
+
+  return (
+    <Suspense fallback={fallback}>
+      <div ref={mountRef} className="relative" style={{ width: `${width}px`, height: `${height}px` }} />
+    </Suspense>
   );
-};
+});
 
-export default MenuViewer;
-
+export default ThreeDViewer;
 

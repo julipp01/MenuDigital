@@ -31,17 +31,15 @@ const MenuViewer = ({ restaurantId }) => {
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [cart, setCart] = useState([]);
+  const [showCart, setShowCart] = useState(false);
   const [activeSection, setActiveSection] = useState(null);
   const sectionRefs = useRef({});
   const { socket, isConnected } = useSocket();
 
   const fetchData = async () => {
-    console.log("[MenuViewer] Iniciando fetch de datos para restaurantId:", restaurantId);
     setLoading(true);
     try {
       const menuResponse = await api.get(`/menu/${restaurantId}`);
-      console.log("[MenuViewer] Datos recibidos:", menuResponse.data);
-      
       const restaurantData = menuResponse.data.restaurant || {};
       setRestaurantName(restaurantData.name || "Mi Restaurante");
       setLogo(buildImageUrl(restaurantData.logo_url));
@@ -68,16 +66,15 @@ const MenuViewer = ({ restaurantId }) => {
 
   const addToCart = (item) => {
     setCart((prevCart) => [...prevCart, item]);
+    setShowCart(true);
   };
 
   useEffect(() => {
     fetchData();
     if (isConnected && socket) {
-      console.log("[MenuViewer] WebSocket conectado");
       socket.addEventListener("message", (event) => {
         try {
           const message = JSON.parse(event.data);
-          console.log("[MenuViewer] Mensaje recibido por WebSocket:", message);
           if (message.type === "menu-changed") {
             fetchData();
           }
@@ -85,8 +82,6 @@ const MenuViewer = ({ restaurantId }) => {
           console.error("[MenuViewer] Error al procesar mensaje WebSocket:", error.message);
         }
       });
-    } else {
-      console.warn("[MenuViewer] WebSocket no conectado");
     }
   }, [restaurantId, isConnected, socket]);
 
@@ -95,7 +90,7 @@ const MenuViewer = ({ restaurantId }) => {
       <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-indigo-500"></div>
     </div>
   ) : (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-200 font-sans">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-200 font-sans relative">
       <header className="fixed top-0 left-0 right-0 bg-white shadow-md p-6 z-20 flex items-center justify-between rounded-b-xl">
         {logo && <img src={logo} alt={restaurantName} className="w-16 h-16 rounded-full shadow-lg" />}
         <h1 className="text-4xl font-bold text-gray-900" style={{ color: colors.primary }}>{restaurantName}</h1>
@@ -117,7 +112,7 @@ const MenuViewer = ({ restaurantId }) => {
             <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-4 border-indigo-500 pb-2 transition-all duration-300 hover:scale-105 hover:text-["+colors.primary+"]">{section}</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {menuItems.filter(item => item.category === section).map(item => (
-                <div key={item.id} className="bg-white rounded-xl shadow-lg p-5 transition-all hover:scale-105 hover:shadow-xl cursor-pointer" onClick={() => setSelectedItem(item)}>
+                <div key={item.id} className="bg-white rounded-xl shadow-lg p-5 transition-all hover:scale-105 hover:shadow-xl cursor-pointer" onMouseEnter={() => setSelectedItem(item)}>
                   <img src={item.image_url} alt={item.name} className="w-full h-40 object-cover rounded-md" />
                   <h3 className="text-lg font-semibold mt-4 text-gray-900">{item.name}</h3>
                   <button className="mt-2 px-4 py-2 w-full rounded-lg text-white transition-all duration-200 hover:scale-105 shadow-lg" style={{ backgroundColor: colors.primary }} onClick={(e) => { e.stopPropagation(); addToCart(item); }}>Añadir al pedido</button>
