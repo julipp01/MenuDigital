@@ -1,8 +1,8 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import ThreeDViewer from "./ThreeDViewer";
 
-// Lista estática de modelos
+// Lista estática de modelos (sin cambios)
 const models = [
   {
     name: "Platillo 1",
@@ -30,7 +30,7 @@ const models = [
   },
 ];
 
-// Animaciones
+// Animaciones (sin cambios)
 const buttonVariants = {
   initial: { opacity: 0, y: 15 },
   animate: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
@@ -66,8 +66,9 @@ const VRSection = React.memo(() => {
   const [isArSupported, setIsArSupported] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const viewerRef = useRef(null); // Referencia al componente ThreeDViewer
 
-  // Verificación de soporte AR
+  // Verificación de soporte AR (sin cambios)
   useEffect(() => {
     const checkArSupport = async () => {
       if ("xr" in navigator) {
@@ -81,7 +82,7 @@ const VRSection = React.memo(() => {
       } else {
         setIsArSupported(false);
       }
-      setLoading(false); // Termina la carga inicial
+      setLoading(false);
     };
     checkArSupport();
   }, []);
@@ -97,13 +98,21 @@ const VRSection = React.memo(() => {
     e.preventDefault();
     e.stopPropagation();
     if (isArSupported) {
-      setIsArMode((prev) => !prev);
+      if (!isArMode) {
+        // Iniciar AR directamente desde el manejador de eventos
+        viewerRef.current.startAR();
+        setIsArMode(true);
+      } else {
+        // Finalizar AR
+        viewerRef.current.endAR();
+        setIsArMode(false);
+      }
     } else {
       alert("AR no soportado. Usa Chrome en Android o Safari en iOS con WebXR habilitado.");
     }
-  }, [isArSupported]);
+  }, [isArSupported, isArMode]);
 
-  // Renderizado de thumbnails
+  // Renderizado de thumbnails (sin cambios)
   const renderedThumbnails = models.map((model) => (
     <motion.button
       key={model.url}
@@ -153,6 +162,7 @@ const VRSection = React.memo(() => {
               </div>
             )}
             <ThreeDViewer
+              ref={viewerRef} // Pasar la referencia
               modelUrl={selectedModel.url}
               scale={selectedModel.scale}
               enableAr={isArMode && isArSupported}
@@ -174,9 +184,7 @@ const VRSection = React.memo(() => {
               {isArSupported && (
                 <motion.button
                   onClick={handleToggleAr}
-                  className={`${
-                    isArMode ? "bg-red-500 hover:bg-red-600" : "bg-orange-500 hover:bg-orange-600"
-                  } text-white px-4 py-2 rounded-full font-['Roboto'] text-sm shadow-md transition-all duration-200`}
+                  className={`${isArMode ? "bg-red-500 hover:bg-red-600" : "bg-orange-500 hover:bg-orange-600"} text-white px-4 py-2 rounded-full font-['Roboto'] text-sm shadow-md transition-all duration-200`}
                   whileHover={{ scale: 1.05 }}
                 >
                   {isArMode ? "Salir de AR" : "Ver en AR"}
@@ -201,7 +209,7 @@ const VRSection = React.memo(() => {
           </motion.div>
         </div>
 
-        {/* Panel Lateral Derecho */}
+        {/* Panel Lateral Derecho (sin cambios) */}
         <motion.div
           className="lg:col-span-1 flex flex-col gap-8"
           initial={{ opacity: 0, x: 20 }}
