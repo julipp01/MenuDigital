@@ -1,13 +1,36 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import ThreeDViewer from "./ThreeDViewer";
 
+// Lista estática de modelos basada en los archivos .glb en public/models/
 const models = [
-  { name: "Platillo 1", url: "/models/example.glb", thumbnail: "/thumbnails/example.jpg", scale: [2, 2, 2], description: "Un delicioso platillo principal con sabores únicos.", price: "S/. 45" },
-  { name: "Platillo 2", url: "/models/dish2.glb", thumbnail: "/thumbnails/dish2.jpg", scale: [1.5, 1.5, 1.5], description: "Postre exquisito y único para los amantes del dulce.", price: "S/. 25" },
-  { name: "Platillo 3", url: "/models/dish3.glb", thumbnail: "/thumbnails/dish3.jpg", scale: [1, 1, 1], description: "Bebida refrescante con un toque especial.", price: "S/. 15" },
+  {
+    name: "Platillo 1",
+    url: "/models/example.glb", // Ajusta según tus archivos
+    thumbnail: "/thumbnails/example.jpg", // Ajusta o usa un placeholder
+    scale: [2, 2, 2],
+    description: "Un delicioso platillo principal con sabores únicos.",
+    price: "S/. 45",
+  },
+  {
+    name: "Platillo 2",
+    url: "/models/dish2.glb", // Ajusta según tus archivos
+    thumbnail: "/thumbnails/dish2.jpg",
+    scale: [1.5, 1.5, 1.5],
+    description: "Postre exquisito y único para los amantes del dulce.",
+    price: "S/. 25",
+  },
+  {
+    name: "Platillo 3",
+    url: "/models/dish3.glb", // Ajusta según tus archivos
+    thumbnail: "/thumbnails/dish3.jpg",
+    scale: [1, 1, 1],
+    description: "Bebida refrescante con un toque especial.",
+    price: "S/. 15",
+  },
 ];
 
+// Definimos las animaciones
 const cardVariants = {
   initial: { scale: 0.9, opacity: 0, rotateY: -15 },
   animate: { scale: 1, opacity: 1, rotateY: 0, transition: { duration: 0.6, ease: "easeOut" } },
@@ -22,10 +45,34 @@ const textVariants = {
 
 const VRSection = React.memo(() => {
   const [selectedModel, setSelectedModel] = useState(models[0]);
+  const [isArMode, setIsArMode] = useState(false);
+  const [isArSupported, setIsArSupported] = useState(false);
+
+  // Verificar soporte para WebXR AR
+  useEffect(() => {
+    const checkArSupport = async () => {
+      if ("xr" in navigator) {
+        const supported = await navigator.xr.isSessionSupported("immersive-ar");
+        setIsArSupported(supported);
+      } else {
+        setIsArSupported(false);
+      }
+    };
+    checkArSupport();
+  }, []);
 
   const handleSelectModel = useCallback((model) => {
     setSelectedModel(model);
+    setIsArMode(false); // Desactivar AR al cambiar de modelo
   }, []);
+
+  const handleToggleAr = useCallback(() => {
+    if (isArSupported) {
+      setIsArMode((prev) => !prev);
+    } else {
+      alert("AR no está soportado en este dispositivo o navegador. Usa Chrome en Android o Safari en iOS con soporte para WebXR.");
+    }
+  }, [isArSupported]);
 
   const renderedCards = useMemo(
     () =>
@@ -41,13 +88,12 @@ const VRSection = React.memo(() => {
             selectedModel.url === model.url ? "ring-2 ring-orange-500" : "border border-gray-200 hover:shadow-lg hover:ring-1 hover:ring-orange-300"
           } w-40 h-52`}
         >
-          {/* Imagen ajustada */}
           <img
             src={model.thumbnail}
             alt={model.name}
             className="w-full h-28 object-cover"
             loading="lazy"
-            onError={() => console.error(`Error cargando thumbnail: ${model.thumbnail}`)}
+            onError={(e) => (e.target.src = "/thumbnails/placeholder.jpg")} // Placeholder si no hay thumbnail
           />
           <div className="p-2 flex flex-col justify-between bg-gradient-to-t from-gray-50 to-transparent">
             <div>
@@ -128,10 +174,11 @@ const VRSection = React.memo(() => {
               width={384}
               height={384}
               scale={selectedModel.scale}
-              autoRotate={false}
+              autoRotate={!isArMode} // Desactivar rotación automática en modo AR
               backgroundColor="#fefefe"
               ambientLightIntensity={1.5}
               directionalLightIntensity={1.3}
+              enableAr={isArMode} // Habilitar modo AR con WebXR
             />
             <motion.div
               className="absolute top-2 left-2 bg-orange-600 text-white px-2 py-1 rounded-full font-poppins text-xs font-semibold shadow-sm"
@@ -141,6 +188,14 @@ const VRSection = React.memo(() => {
             >
               {selectedModel.name}
             </motion.div>
+            {isArSupported && (
+              <button
+                onClick={handleToggleAr}
+                className="absolute bottom-4 right-4 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700"
+              >
+                {isArMode ? "Salir de AR" : "Ver en AR"}
+              </button>
+            )}
           </motion.div>
           <div className="flex flex-wrap justify-center gap-4">{renderedCards}</div>
         </div>
@@ -150,4 +205,3 @@ const VRSection = React.memo(() => {
 });
 
 export default VRSection;
-

@@ -13,6 +13,7 @@ const ThreeDViewer = React.memo(({
   backgroundColor = "#f5f5f5",
   ambientLightIntensity = 1.5,
   directionalLightIntensity = 1.3,
+  enableAR = false,
   arScale = [0.1, 0.1, 0.1],
   fallback = <div className="text-xs text-gray-500">Cargando modelo...</div>,
 }) => {
@@ -130,9 +131,7 @@ const ThreeDViewer = React.memo(({
       }
     };
 
-    // Habilitar AR solo para "example.glb"
-    const isExampleModel = modelUrl === "example.glb";
-    if (currentMount && isExampleModel) {
+    if (currentMount && enableAR) {
       navigator.xr.isSessionSupported("immersive-ar").then((supported) => {
         if (supported) {
           const arButton = ARButton.createButton(renderer, {
@@ -216,7 +215,7 @@ const ThreeDViewer = React.memo(({
       if (hitTestSource) hitTestSource.cancel();
       hitTestSourceRequested = false;
     };
-  }, [modelUrl, width, height, scale, autoRotate, backgroundColor, ambientLightIntensity, directionalLightIntensity, arScale]);
+  }, [modelUrl, width, height, scale, autoRotate, backgroundColor, ambientLightIntensity, directionalLightIntensity, enableAR, arScale]);
 
   return (
     <Suspense fallback={fallback}>
