@@ -1,5 +1,5 @@
 // frontend/src/components/MenuViewer.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import api from "@/services/api";
 import ThreeDViewer from "@/components/ThreeDViewer";
 import useSocket from "@/hooks/useSocket";
@@ -16,15 +16,23 @@ const buildImageUrl = (url) => {
 };
 
 const MenuViewer = ({ restaurantId }) => {
+  if (!restaurantId) {
+    console.error("⚠️ restaurantId no está definido");
+    return <div className="text-center text-red-600 font-bold">Error: No se encontró el menú</div>;
+  }
+
   console.log("[MenuViewer] Renderizando componente con restaurantId:", restaurantId);
   
   const [menuItems, setMenuItems] = useState([]);
-  const [restaurantName, setRestaurantName] = useState("Mi Restaurante");
+  const [restaurantName, setRestaurantName] = useState("Cargando...");
   const [logo, setLogo] = useState(null);
   const [colors, setColors] = useState({ primary: "#FF9800", secondary: "#4CAF50" });
   const [menuSections, setMenuSections] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [cart, setCart] = useState([]);
+  const [activeSection, setActiveSection] = useState(null);
+  const sectionRefs = useRef({});
   const { socket, isConnected } = useSocket();
 
   const fetchData = async () => {
@@ -38,7 +46,8 @@ const MenuViewer = ({ restaurantId }) => {
       setRestaurantName(restaurantData.name || "Mi Restaurante");
       setLogo(buildImageUrl(restaurantData.logo_url));
       setColors(restaurantData.colors || { primary: "#FF9800", secondary: "#4CAF50" });
-      setMenuSections(restaurantData.sections || { "Platos Principales": [], "Postres": [], "Bebidas": [] });
+      setMenuSections(restaurantData.sections || {});
+      setActiveSection(Object.keys(restaurantData.sections)[0] || null);
       
       const processedItems = (menuResponse.data.items || []).map((item) => ({
         ...item,
@@ -50,6 +59,15 @@ const MenuViewer = ({ restaurantId }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const scrollToSection = (section) => {
+    setActiveSection(section);
+    sectionRefs.current[section]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const addToCart = (item) => {
+    setCart((prevCart) => [...prevCart, item]);
   };
 
   useEffect(() => {
@@ -87,26 +105,22 @@ const MenuViewer = ({ restaurantId }) => {
           {Object.keys(menuSections).map((section) => (
             <button
               key={section}
-              className="px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 shadow hover:bg-indigo-600 hover:text-white"
+              onClick={() => scrollToSection(section)}
+              className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 shadow hover:bg-indigo-600 hover:text-white ${activeSection === section ? "bg-indigo-600 text-white" : ""}`}
             >
               {section}
             </button>
           ))}
         </nav>
         {Object.entries(menuSections).map(([section, items]) => (
-          <div key={section} className="mb-12">
+          <div key={section} ref={(el) => (sectionRefs.current[section] = el)} className="mb-12">
             <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-4 border-indigo-500 pb-2">{section}</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {menuItems.filter(item => item.category === section).map(item => (
                 <div key={item.id} className="bg-white rounded-xl shadow-lg p-5 transition-all hover:scale-105 hover:shadow-xl cursor-pointer" onClick={() => setSelectedItem(item)}>
-                  {item.image_url.toLowerCase().endsWith(".glb") ? (
-                    <ThreeDViewer modelUrl={item.image_url} autoRotate className="w-full h-40 rounded-md object-cover" />
-                  ) : (
-                    <img src={item.image_url} alt={item.name} className="w-full h-40 object-cover rounded-md" onError={(e) => e.target.src = "/default-image.jpg"} />
-                  )}
+                  <img src={item.image_url} alt={item.name} className="w-full h-40 object-cover rounded-md" />
                   <h3 className="text-lg font-semibold mt-4 text-gray-900">{item.name}</h3>
-                  <p className="text-gray-600 text-sm">{item.description}</p>
-                  <span className="text-lg font-bold text-indigo-600">S/. {item.price}</span>
+                  <button className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-lg w-full hover:bg-indigo-700" onClick={(e) => { e.stopPropagation(); addToCart(item); }}>Añadir al pedido</button>
                 </div>
               ))}
             </div>
@@ -118,6 +132,8 @@ const MenuViewer = ({ restaurantId }) => {
 };
 
 export default MenuViewer;
+
+
 
 
 
