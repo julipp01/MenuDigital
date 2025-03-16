@@ -87,7 +87,6 @@ const ThreeDViewer = ({
       },
       undefined,
       (error) => {
-        console.error("[ThreeDViewer] Error al cargar el modelo:", error.message);
         onError("No se pudo cargar el modelo: " + error.message);
       }
     );
@@ -100,7 +99,7 @@ const ThreeDViewer = ({
       controls.dampingFactor = 0.05;
       controls.minDistance = 1;
       controls.maxDistance = 10;
-      controls.enabled = !enableAr; // Desactiva en AR
+      controls.enabled = !enableAr;
     };
     if (!enableAr) setupControls();
 
@@ -113,9 +112,10 @@ const ThreeDViewer = ({
 
       try {
         renderer.xr.enabled = true;
+        renderer.xr.setReferenceSpaceType("local-floor");
         const session = await navigator.xr.requestSession("immersive-ar", {
-          requiredFeatures: ["local-floor"], // Asegura posición relativa al suelo
-          optionalFeatures: ["hit-test", "dom-overlay"],
+          requiredFeatures: ["local-floor", "hit-test"],
+          optionalFeatures: ["dom-overlay"],
           domOverlay: { root: document.body },
         });
         arSessionRef.current = session;
@@ -124,23 +124,41 @@ const ThreeDViewer = ({
         // Desactiva controles en AR
         if (controlsRef.current) controlsRef.current.enabled = false;
 
-        console.log("Sesión AR iniciada con éxito.");
-
         // Manejo de fin de sesión
         session.addEventListener("end", () => {
-          console.log("Sesión AR terminada.");
           arSessionRef.current = null;
           renderer.xr.enabled = false;
           if (controlsRef.current) controlsRef.current.enabled = true;
           setTimeout(() => {
-            window.scrollTo({
-              top: mount.offsetTop - 50,
-              behavior: "smooth",
-            });
+            window.scrollTo({ top: mount.offsetTop - 50, behavior: "smooth" });
           }, 100);
         });
+
+        // Hit-test para colocar el modelo
+        const controller = renderer.xr.getController(0);
+        mount.appendChild(controller);
+
+        const placeModel = (event) => {
+          const frame = session.getFrame();
+          const referenceSpace = renderer.xr.getReferenceSpace();
+          const hitTestSource = session.requestHitTestSource({ space: referenceSpace });
+          frame.getHitTestResults(hitTestSource).then((results) => {
+            if (results.length > 0) {
+              const hit = results[0];
+              const pose = hit.getPose(referenceSpace);
+              if (modelRef.current) {
+                modelRef.current.position.setFromMatrixPosition(new THREE.Matrix4().fromArray(pose.transform.matrix));
+                modelRef.current.visible = true;
+              }
+            }
+          });
+        };
+
+        controller.addEventListener("select", placeModel);
+        session.addEventListener("end", () => {
+          controller.removeEventListener("select", placeModel);
+        });
       } catch (err) {
-        console.error("Error iniciando AR:", err);
         onError(`No se pudo iniciar AR: ${err.message}. Asegúrate de que WebXR esté habilitado.`);
       }
     };
@@ -171,6 +189,31 @@ const ThreeDViewer = ({
     };
     animate();
 
+    // Gestos táctiles para escalar en AR
+    let initialDistance = null;
+
+    const handleTouchStart = (event) => {
+      if (enableAr && event.touches.length === 2) {
+        const dx = event.touches[0].pageX - event.touches[1].pageX;
+        const dy = event.touches[0].pageY - event.touches[1].pageY;
+        initialDistance = Math.sqrt(dx * dx + dy * dy);
+      }
+    };
+
+    const handleTouchMove = (event) => {
+      if (enableAr && event.touches.length === 2 && modelRef.current) {
+        const dx = event.touches[0].pageX - event.touches[1].pageX;
+        const dy = event.touches[0].pageY - event.touches[1].pageY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const scaleFactor = distance / initialDistance;
+        modelRef.current.scale.multiplyScalar(scaleFactor);
+        initialDistance = distance;
+      }
+    };
+
+    mount.addEventListener("touchstart", handleTouchStart);
+    mount.addEventListener("touchmove", handleTouchMove);
+
     // Limpieza
     return () => {
       window.removeEventListener("resize", handleResize);
@@ -179,6 +222,8 @@ const ThreeDViewer = ({
       if (mount && renderer.domElement) mount.removeChild(renderer.domElement);
       if (modelRef.current) scene.remove(modelRef.current);
       renderer.dispose();
+      mount.removeEventListener("touchstart", handleTouchStart);
+      mount.removeEventListener("touchmove", handleTouchMove);
     };
   }, [modelUrl, enableAr, scale, backgroundColor, onLoad, onError]);
 

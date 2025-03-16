@@ -67,23 +67,21 @@ const VRSection = React.memo(() => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Verificación de soporte AR
   useEffect(() => {
     const checkArSupport = async () => {
       if ("xr" in navigator) {
         try {
           const supported = await navigator.xr.isSessionSupported("immersive-ar");
           setIsArSupported(supported);
-          if (!supported) {
-            console.warn("AR no soportado en este dispositivo.");
-          }
         } catch (err) {
           console.error("Error al verificar soporte AR:", err);
           setIsArSupported(false);
         }
       } else {
         setIsArSupported(false);
-        console.warn("WebXR no disponible en este navegador.");
       }
+      setLoading(false); // Termina la carga inicial
     };
     checkArSupport();
   }, []);
@@ -99,15 +97,13 @@ const VRSection = React.memo(() => {
     e.preventDefault();
     e.stopPropagation();
     if (isArSupported) {
-      setIsArMode((prev) => {
-        console.log("Modo AR cambiado a:", !prev);
-        return !prev;
-      });
+      setIsArMode((prev) => !prev);
     } else {
       alert("AR no soportado. Usa Chrome en Android o Safari en iOS con WebXR habilitado.");
     }
   }, [isArSupported]);
 
+  // Renderizado de thumbnails
   const renderedThumbnails = models.map((model) => (
     <motion.button
       key={model.url}
@@ -143,7 +139,7 @@ const VRSection = React.memo(() => {
             animate="animate"
             className="relative h-[70vh] bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200"
           >
-            {loading && !error && (
+            {loading && (
               <div className="absolute inset-0 flex items-center justify-center text-gray-600 bg-gray-100/70 z-10">
                 <svg className="animate-spin h-10 w-10 text-orange-500" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -159,7 +155,7 @@ const VRSection = React.memo(() => {
             <ThreeDViewer
               modelUrl={selectedModel.url}
               scale={selectedModel.scale}
-              enableAr={isArMode}
+              enableAr={isArMode && isArSupported}
               backgroundColor="#ffffff"
               onLoad={() => setLoading(false)}
               onError={(err) => {
@@ -205,7 +201,7 @@ const VRSection = React.memo(() => {
           </motion.div>
         </div>
 
-        {/* Panel Lateral Derecho - Solo Título y QR */}
+        {/* Panel Lateral Derecho */}
         <motion.div
           className="lg:col-span-1 flex flex-col gap-8"
           initial={{ opacity: 0, x: 20 }}
@@ -244,7 +240,7 @@ const VRSection = React.memo(() => {
               ¡Escanea para ver la carta en AR!
             </motion.p>
             <img
-              src="/qr/qr-carta-digital.png" // Asegúrate de que el QR sea negro sobre blanco
+              src="/qr/qr-carta-digital.png"
               alt="QR para Carta Digital"
               className="w-48 h-48 object-contain rounded-xl shadow-lg"
             />
