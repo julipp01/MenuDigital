@@ -84,9 +84,13 @@ const VRSection = React.memo(() => {
     setError(null);
   }, []);
 
-  const handleToggleAr = useCallback(() => {
-    if (isArSupported) setIsArMode((prev) => !prev);
-    else alert("AR no soportado. Usa Chrome en Android o Safari en iOS con WebXR habilitado.");
+  const handleToggleAr = useCallback((e) => {
+    e.preventDefault(); // Evita desplazamientos o comportamientos predeterminados
+    if (isArSupported) {
+      setIsArMode((prev) => !prev);
+    } else {
+      alert("AR no soportado. Usa Chrome en Android o Safari en iOS con WebXR habilitado.");
+    }
   }, [isArSupported]);
 
   const renderedThumbnails = models.map((model) => (
@@ -134,9 +138,7 @@ const VRSection = React.memo(() => {
             )}
             {error && (
               <div className="absolute inset-0 flex items-center justify-center text-red-600 bg-gray-100/70 z-10">
-                <p className="text-sm font-medium font-['Roboto'] text-center">
-                  {error}
-                </p>
+                <p className="text-sm font-medium font-['Roboto'] text-center">{error}</p>
               </div>
             )}
             <ThreeDViewer
@@ -227,7 +229,7 @@ const VRSection = React.memo(() => {
               ¡Explora nuestra carta digital en AR!
             </motion.p>
             <img
-              src="/path-to-qr-code.png" // Reemplaza con tu QR real
+              src="/qr/qr-carta-digital.png" // Ruta actualizada, ajusta según tu archivo
               alt="QR para Carta Digital"
               className="w-32 h-32 object-contain rounded-lg shadow-md"
             />

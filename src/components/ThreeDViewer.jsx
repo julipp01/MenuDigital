@@ -18,6 +18,7 @@ const ThreeDViewer = ({
   const controlsRef = useRef(null);
   const modelRef = useRef(null);
   const animationFrameId = useRef(null);
+  const arSessionRef = useRef(null);
 
   useEffect(() => {
     if (!modelUrl) {
@@ -36,7 +37,7 @@ const ThreeDViewer = ({
     camera.position.set(0, 0, 5);
     cameraRef.current = camera;
 
-    // Configuración del renderizador con manejo de errores
+    // Configuración del renderizador
     let renderer;
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -49,7 +50,7 @@ const ThreeDViewer = ({
       return;
     }
 
-    // Iluminación optimizada
+    // Iluminación
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
     scene.add(ambientLight);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -65,7 +66,6 @@ const ThreeDViewer = ({
         const model = gltf.scene;
         modelRef.current = model;
 
-        // Escala y centrado
         model.scale.set(...scale);
         const box = new THREE.Box3().setFromObject(model);
         const center = box.getCenter(new THREE.Vector3());
@@ -75,7 +75,6 @@ const ThreeDViewer = ({
         const autoScale = 3 / maxDim;
         model.scale.multiplyScalar(autoScale);
 
-        // Optimización del modelo
         model.traverse((child) => {
           if (child.isMesh) {
             child.geometry.computeVertexNormals();
@@ -113,13 +112,26 @@ const ThreeDViewer = ({
             optionalFeatures: ["hit-test", "dom-overlay"],
             domOverlay: { root: document.body },
           });
+          arSessionRef.current = session;
           renderer.xr.setSession(session);
+
+          // Evitar desplazamiento al salir de AR
+          session.addEventListener("end", () => {
+            setTimeout(() => {
+              window.scrollTo({
+                top: mount.offsetTop,
+                behavior: "smooth",
+              });
+            }, 100); // Retraso para asegurar que AR termine
+          });
         } catch (err) {
           console.error("Error iniciando AR:", err);
           onError("No se pudo iniciar AR: " + err.message);
         }
       };
       startAR();
+    } else if (enableAr) {
+      onError("WebXR no soportado en este dispositivo.");
     }
 
     // Redimensionamiento
@@ -145,6 +157,7 @@ const ThreeDViewer = ({
     return () => {
       window.removeEventListener("resize", handleResize);
       if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
+      if (arSessionRef.current) arSessionRef.current.end();
       if (mount && renderer.domElement) mount.removeChild(renderer.domElement);
       if (modelRef.current) scene.remove(modelRef.current);
       renderer.dispose();
