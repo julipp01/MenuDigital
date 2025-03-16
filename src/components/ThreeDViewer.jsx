@@ -93,15 +93,16 @@ const ThreeDViewer = ({
     );
 
     // Controles para modo no-AR
-    let controls;
-    if (!enableAr) {
-      controls = new OrbitControls(camera, renderer.domElement);
+    const setupControls = () => {
+      const controls = new OrbitControls(camera, renderer.domElement);
       controlsRef.current = controls;
       controls.enableDamping = true;
       controls.dampingFactor = 0.05;
       controls.minDistance = 1;
       controls.maxDistance = 10;
-    }
+      controls.enabled = !enableAr; // Desactiva en AR
+    };
+    if (!enableAr) setupControls();
 
     // Soporte AR
     const startAR = async () => {
@@ -110,37 +111,45 @@ const ThreeDViewer = ({
         return;
       }
 
-      renderer.xr.enabled = true;
       try {
+        renderer.xr.enabled = true;
         const session = await navigator.xr.requestSession("immersive-ar", {
+          requiredFeatures: ["local-floor"], // Asegura posición relativa al suelo
           optionalFeatures: ["hit-test", "dom-overlay"],
           domOverlay: { root: document.body },
         });
         arSessionRef.current = session;
         renderer.xr.setSession(session);
 
-        // Manejo de fin de sesión AR
+        // Desactiva controles en AR
+        if (controlsRef.current) controlsRef.current.enabled = false;
+
+        console.log("Sesión AR iniciada con éxito.");
+
+        // Manejo de fin de sesión
         session.addEventListener("end", () => {
+          console.log("Sesión AR terminada.");
           arSessionRef.current = null;
           renderer.xr.enabled = false;
-          if (controlsRef.current) controlsRef.current.enabled = true; // Reactiva controles si existen
+          if (controlsRef.current) controlsRef.current.enabled = true;
           setTimeout(() => {
             window.scrollTo({
-              top: mount.offsetTop - 50, // Ajusta para centrar el visor
+              top: mount.offsetTop - 50,
               behavior: "smooth",
             });
           }, 100);
         });
       } catch (err) {
         console.error("Error iniciando AR:", err);
-        onError("No se pudo iniciar AR: " + err.message);
+        onError(`No se pudo iniciar AR: ${err.message}. Asegúrate de que WebXR esté habilitado.`);
       }
     };
 
+    // Manejo de AR basado en enableAr
     if (enableAr) {
       startAR();
     } else if (arSessionRef.current) {
-      arSessionRef.current.end(); // Termina la sesión AR si se desactiva
+      arSessionRef.current.end();
     }
 
     // Redimensionamiento
@@ -157,7 +166,7 @@ const ThreeDViewer = ({
     // Animación
     const animate = () => {
       animationFrameId.current = requestAnimationFrame(animate);
-      if (!enableAr && controls) controls.update();
+      if (!enableAr && controlsRef.current) controlsRef.current.update();
       renderer.render(scene, camera);
     };
     animate();

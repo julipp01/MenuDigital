@@ -106,7 +106,8 @@ const MenuViewer = ({ restaurantId }) => {
             <button
               key={section}
               onClick={() => scrollToSection(section)}
-              className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 shadow hover:scale-110 hover:bg-opacity-90 hover:shadow-lg ${activeSection === section ? "bg-["+colors.primary+"] text-white" : "bg-gray-200 text-gray-700"}`}
+              className="px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 shadow hover:scale-110 hover:bg-opacity-90 hover:shadow-lg"
+              style={{ backgroundColor: activeSection === section ? colors.primary : "#e5e7eb", color: activeSection === section ? "white" : "#374151" }}
             >
               {section}
             </button>
@@ -114,27 +115,28 @@ const MenuViewer = ({ restaurantId }) => {
         </nav>
         {Object.entries(menuSections).map(([section, items]) => (
           <div key={section} ref={(el) => (sectionRefs.current[section] = el)} className="mb-12">
-            <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-4 border-indigo-500 pb-2 transition-all duration-300 hover:scale-105 hover:text-["+colors.primary+"]">{section}</h2>
+            <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b-4 pb-2 transition-all duration-300 hover:scale-105"
+              style={{ borderColor: colors.primary, color: colors.primary }}>{section}</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {menuItems.filter(item => item.category === section).map(item => (
                 <div key={item.id} className="bg-white rounded-xl shadow-lg p-5 transition-all hover:scale-105 hover:shadow-xl cursor-pointer" onClick={() => setSelectedItem(item)}>
                   <img src={item.image_url} alt={item.name} className="w-full h-40 object-cover rounded-md" />
                   <h3 className="text-lg font-semibold mt-4 text-gray-900">{item.name}</h3>
-                  <button className="mt-2 px-4 py-2 w-full rounded-lg text-white transition-all duration-200 hover:scale-105 shadow-lg" style={{ backgroundColor: colors.primary }} onClick={(e) => { e.stopPropagation(); addToCart(item); }}>Añadir al pedido</button>
+                  <button className="mt-2 px-4 py-2 w-full rounded-lg text-white transition-all duration-200 hover:scale-105 shadow-lg"
+                    style={{ backgroundColor: colors.primary }}
+                    onClick={(e) => { e.stopPropagation(); addToCart(item); }}>Añadir al pedido</button>
                 </div>
               ))}
             </div>
           </div>
         ))}
       </div>
-      <button onClick={scrollToTop} className="fixed bottom-6 right-6 bg-gray-800 text-white p-3 rounded-full shadow-lg hover:bg-gray-900 transition-all">
-        ⬆️
-      </button>
     </div>
   );
 };
 
 export default MenuViewer;
+
 
 
 

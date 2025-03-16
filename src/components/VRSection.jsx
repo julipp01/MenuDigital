@@ -73,12 +73,16 @@ const VRSection = React.memo(() => {
         try {
           const supported = await navigator.xr.isSessionSupported("immersive-ar");
           setIsArSupported(supported);
+          if (!supported) {
+            console.warn("AR no soportado en este dispositivo.");
+          }
         } catch (err) {
           console.error("Error al verificar soporte AR:", err);
           setIsArSupported(false);
         }
       } else {
         setIsArSupported(false);
+        console.warn("WebXR no disponible en este navegador.");
       }
     };
     checkArSupport();
@@ -93,9 +97,12 @@ const VRSection = React.memo(() => {
 
   const handleToggleAr = useCallback((e) => {
     e.preventDefault();
-    e.stopPropagation(); // Evita propagación que pueda causar redirecciones
+    e.stopPropagation();
     if (isArSupported) {
-      setIsArMode((prev) => !prev);
+      setIsArMode((prev) => {
+        console.log("Modo AR cambiado a:", !prev);
+        return !prev;
+      });
     } else {
       alert("AR no soportado. Usa Chrome en Android o Safari en iOS con WebXR habilitado.");
     }
@@ -237,7 +244,7 @@ const VRSection = React.memo(() => {
               ¡Escanea para ver la carta en AR!
             </motion.p>
             <img
-              src="/qr/qr-carta-digital.png" // Ajusta según la ruta de tu QR
+              src="/qr/qr-carta-digital.png" // Asegúrate de que el QR sea negro sobre blanco
               alt="QR para Carta Digital"
               className="w-48 h-48 object-contain rounded-xl shadow-lg"
             />
