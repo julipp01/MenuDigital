@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { GiKnifeFork } from "react-icons/gi";
 import { motion } from "framer-motion";
@@ -12,6 +12,7 @@ import UpdatePlan from "./AdminDashboard/UpdatePlan";
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // Redirigir si no hay usuario autenticado
   if (!user) {
@@ -27,6 +28,10 @@ const AdminDashboard = () => {
     return user && allowedRoles.includes(user.role);
   };
 
+  const toggleMenu = () => {
+    setIsMenuOpen(!isMenuOpen);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-100 font-sans">
       <nav className="bg-white shadow-lg fixed top-0 left-0 w-full z-50">
@@ -40,7 +45,16 @@ const AdminDashboard = () => {
             </span>
           </div>
 
-          <div className="flex space-x-6">
+          <div className="flex space-x-6 md:hidden">
+            <button
+              onClick={toggleMenu}
+              className="text-gray-800 font-medium hover:text-orange-600 transition"
+            >
+              {isMenuOpen ? "Cerrar" : "Menú"}
+            </button>
+          </div>
+
+          <div className={`flex space-x-6 ${isMenuOpen ? "block" : "hidden"} md:flex`}>
             <Link to="dashboard" className="text-gray-800 font-medium hover:text-orange-600 transition">
               Inicio
             </Link>

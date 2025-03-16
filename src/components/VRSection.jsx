@@ -1,28 +1,28 @@
-import React, { useState, useCallback, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import ThreeDViewer from "./ThreeDViewer";
 
-// Lista estática de modelos basada en los archivos .glb en public/models/
+// Lista estática de modelos
 const models = [
   {
     name: "Platillo 1",
-    url: "/models/example.glb", // Ajusta según tus archivos
-    thumbnail: "/thumbnails/example.jpg", // Ajusta o usa un placeholder
-    scale: [2, 2, 2],
+    url: "/models/example.glb",
+    thumbnail: "/thumbnails/example.jpg",
+    scale: [1, 1, 1],
     description: "Un delicioso platillo principal con sabores únicos.",
     price: "S/. 45",
   },
   {
     name: "Platillo 2",
-    url: "/models/dish2.glb", // Ajusta según tus archivos
+    url: "/models/dish2.glb",
     thumbnail: "/thumbnails/dish2.jpg",
-    scale: [1.5, 1.5, 1.5],
+    scale: [1, 1, 1],
     description: "Postre exquisito y único para los amantes del dulce.",
     price: "S/. 25",
   },
   {
     name: "Platillo 3",
-    url: "/models/dish3.glb", // Ajusta según tus archivos
+    url: "/models/dish3.glb",
     thumbnail: "/thumbnails/dish3.jpg",
     scale: [1, 1, 1],
     description: "Bebida refrescante con un toque especial.",
@@ -30,32 +30,48 @@ const models = [
   },
 ];
 
-// Definimos las animaciones
-const cardVariants = {
-  initial: { scale: 0.9, opacity: 0, rotateY: -15 },
-  animate: { scale: 1, opacity: 1, rotateY: 0, transition: { duration: 0.6, ease: "easeOut" } },
-  hover: { scale: 1.1, rotateY: 5, transition: { duration: 0.3 } },
+// Animaciones
+const buttonVariants = {
+  initial: { opacity: 0, y: 15 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+  hover: { scale: 1.1, boxShadow: "0 10px 25px rgba(249, 115, 22, 0.3)", transition: { duration: 0.2 } },
+  selected: {
+    scale: 1.05,
+    borderColor: "#f97316",
+    boxShadow: "0 0 15px rgba(249, 115, 22, 0.5)",
+    transition: { duration: 0.2 },
+  },
 };
 
 const textVariants = {
-  initial: { opacity: 0, y: 10 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.5, delay: 0.2 } },
-  hover: { scale: 1.05, transition: { duration: 0.3 } },
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
+  hover: { color: "#f97316", scale: 1.02, transition: { duration: 0.2 } },
+};
+
+const qrVariants = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
+  hover: { scale: 1.05, boxShadow: "0 8px 20px rgba(249, 115, 22, 0.2)", transition: { duration: 0.2 } },
+};
+
+const viewerVariants = {
+  initial: { opacity: 0, scale: 0.98 },
+  animate: { opacity: 1, scale: 1, transition: { duration: 0.6, ease: "easeOut" } },
 };
 
 const VRSection = React.memo(() => {
   const [selectedModel, setSelectedModel] = useState(models[0]);
   const [isArMode, setIsArMode] = useState(false);
   const [isArSupported, setIsArSupported] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Verificar soporte para WebXR AR
   useEffect(() => {
     const checkArSupport = async () => {
       if ("xr" in navigator) {
         const supported = await navigator.xr.isSessionSupported("immersive-ar");
         setIsArSupported(supported);
-      } else {
-        setIsArSupported(false);
       }
     };
     checkArSupport();
@@ -63,142 +79,160 @@ const VRSection = React.memo(() => {
 
   const handleSelectModel = useCallback((model) => {
     setSelectedModel(model);
-    setIsArMode(false); // Desactivar AR al cambiar de modelo
+    setIsArMode(false);
+    setLoading(true);
+    setError(null);
   }, []);
 
   const handleToggleAr = useCallback(() => {
-    if (isArSupported) {
-      setIsArMode((prev) => !prev);
-    } else {
-      alert("AR no está soportado en este dispositivo o navegador. Usa Chrome en Android o Safari en iOS con soporte para WebXR.");
-    }
+    if (isArSupported) setIsArMode((prev) => !prev);
+    else alert("AR no soportado. Usa Chrome en Android o Safari en iOS con WebXR habilitado.");
   }, [isArSupported]);
 
-  const renderedCards = useMemo(
-    () =>
-      models.map((model) => (
-        <motion.div
-          key={model.url}
-          variants={cardVariants}
-          initial="initial"
-          animate="animate"
-          whileHover="hover"
-          onClick={() => handleSelectModel(model)}
-          className={`relative bg-white rounded-xl overflow-hidden shadow-md cursor-pointer transition-all duration-300 ${
-            selectedModel.url === model.url ? "ring-2 ring-orange-500" : "border border-gray-200 hover:shadow-lg hover:ring-1 hover:ring-orange-300"
-          } w-40 h-52`}
-        >
-          <img
-            src={model.thumbnail}
-            alt={model.name}
-            className="w-full h-28 object-cover"
-            loading="lazy"
-            onError={(e) => (e.target.src = "/thumbnails/placeholder.jpg")} // Placeholder si no hay thumbnail
-          />
-          <div className="p-2 flex flex-col justify-between bg-gradient-to-t from-gray-50 to-transparent">
-            <div>
-              <motion.h3 variants={textVariants} className="text-sm font-bold text-gray-900 truncate font-poppins hover:text-orange-500 transition-colors duration-300">
-                {model.name}
-              </motion.h3>
-              <motion.p variants={textVariants} className="text-xs text-gray-600 line-clamp-2 font-roboto hover:text-gray-800 transition-colors duration-300">
-                {model.description}
-              </motion.p>
-            </div>
-            <motion.span variants={textVariants} className="text-sm font-semibold text-orange-600 font-poppins hover:text-orange-700 transition-colors duration-300">
-              {model.price}
-            </motion.span>
-          </div>
-          <motion.div
-            className="absolute inset-0 bg-orange-600 bg-opacity-0 hover:bg-opacity-30 transition-opacity duration-300 flex items-center justify-center"
-            initial={{ opacity: 0 }}
-            whileHover={{ opacity: 1 }}
-          >
-            <motion.span className="text-white font-bold text-xs font-poppins drop-shadow-md" initial={{ scale: 0.8 }} whileHover={{ scale: 1.1 }}>
-              Ver en 3D
-            </motion.span>
-          </motion.div>
-        </motion.div>
-      )),
-    [handleSelectModel, selectedModel]
-  );
+  const renderedThumbnails = models.map((model) => (
+    <motion.button
+      key={model.url}
+      variants={buttonVariants}
+      initial="initial"
+      animate={selectedModel.url === model.url ? "selected" : "animate"}
+      whileHover="hover"
+      onClick={() => handleSelectModel(model)}
+      className="relative bg-white rounded-xl shadow-md overflow-hidden border-2 border-gray-200 w-28 h-32 focus:outline-none focus:ring-2 focus:ring-orange-400 transition-all duration-200"
+    >
+      <img
+        src={model.thumbnail}
+        alt={`Miniatura de ${model.name}`}
+        className="w-full h-20 object-cover rounded-t-xl"
+        loading="lazy"
+        onError={(e) => (e.target.src = "/thumbnails/placeholder.jpg")}
+      />
+      <div className="p-2 text-center">
+        <p className="text-xs font-semibold text-gray-800 font-['Roboto'] truncate">{model.name}</p>
+        <p className="text-xs text-gray-600 font-['Roboto']">{model.price}</p>
+      </div>
+    </motion.button>
+  ));
 
   return (
-    <section id="3d" className="py-16 bg-gradient-to-br from-amber-50 via-orange-100 to-amber-300 relative overflow-hidden">
-      <motion.div
-        className="absolute inset-0 pointer-events-none"
-        animate={{
-          background: [
-            "radial-gradient(circle at 30% 40%, rgba(255, 147, 0, 0.25) 0%, transparent 60%)",
-            "radial-gradient(circle at 70% 60%, rgba(255, 147, 0, 0.25) 0%, transparent 60%)",
-          ],
-        }}
-        transition={{ duration: 6, repeat: Infinity, repeatType: "reverse" }}
-      />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col lg:flex-row items-center justify-between gap-8">
-        <motion.div initial={{ opacity: 0, x: -50 }} whileInView={{ opacity: 1, x: 0 }} transition={{ duration: 0.8 }} className="lg:w-1/2 text-center lg:text-left">
-          <motion.h2
-            className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-4 tracking-tight font-poppins drop-shadow-md hover:text-orange-500 transition-colors duration-300"
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            whileHover={{ scale: 1.02 }}
-          >
-            Menú 3D Interactivo
-          </motion.h2>
-          <motion.p
-            className="text-lg text-gray-700 max-w-md mx-auto lg:mx-0 font-roboto font-light mb-6"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.4 }}
-          >
-            Explora nuestros platillos en 3D y AR con un diseño moderno y dinámico.
-          </motion.p>
-          <motion.a
-            href="#contacto"
-            className="inline-block bg-orange-600 text-white font-semibold py-2 px-6 rounded-full shadow-md font-poppins hover:bg-orange-700 hover:scale-105 hover:shadow-lg transition-all duration-300"
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            Explora Más
-          </motion.a>
-        </motion.div>
-        <div className="lg:w-1/2 flex flex-col items-center gap-6">
+    <section id="3d" className="py-16 bg-gray-50 min-h-screen flex items-center justify-center">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
+        {/* Visor Principal y Thumbnails */}
+        <div className="lg:col-span-3 flex flex-col gap-6">
           <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8 }}
-            className="relative w-96 h-96 bg-gradient-to-b from-gray-50 to-gray-200 rounded-2xl overflow-hidden shadow-lg ring-1 ring-orange-400 ring-opacity-50"
+            variants={viewerVariants}
+            initial="initial"
+            animate="animate"
+            className="relative h-[70vh] bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200"
           >
+            {loading && !error && (
+              <div className="absolute inset-0 flex items-center justify-center text-gray-600 bg-gray-100/70 z-10">
+                <svg className="animate-spin h-10 w-10 text-orange-500" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+              </div>
+            )}
+            {error && (
+              <div className="absolute inset-0 flex items-center justify-center text-red-600 bg-gray-100/70 z-10">
+                <p className="text-sm font-medium font-['Roboto'] text-center">
+                  {error}
+                </p>
+              </div>
+            )}
             <ThreeDViewer
               modelUrl={selectedModel.url}
-              width={384}
-              height={384}
               scale={selectedModel.scale}
-              autoRotate={!isArMode} // Desactivar rotación automática en modo AR
-              backgroundColor="#fefefe"
-              ambientLightIntensity={1.5}
-              directionalLightIntensity={1.3}
-              enableAr={isArMode} // Habilitar modo AR con WebXR
+              enableAr={isArMode}
+              backgroundColor="#ffffff"
+              onLoad={() => setLoading(false)}
+              onError={(err) => {
+                setLoading(false);
+                setError(err);
+              }}
             />
-            <motion.div
-              className="absolute top-2 left-2 bg-orange-600 text-white px-2 py-1 rounded-full font-poppins text-xs font-semibold shadow-sm"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-            >
-              {selectedModel.name}
-            </motion.div>
-            {isArSupported && (
-              <button
-                onClick={handleToggleAr}
-                className="absolute bottom-4 right-4 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700"
+            <div className="absolute top-4 left-4 flex gap-3 z-20">
+              <motion.button
+                onClick={() => window.dispatchEvent(new CustomEvent("resetView"))}
+                className="bg-white text-orange-600 px-4 py-2 rounded-full hover:bg-orange-50 border border-orange-200 font-['Roboto'] text-sm shadow-md transition-all duration-200"
+                whileHover={{ scale: 1.05 }}
               >
-                {isArMode ? "Salir de AR" : "Ver en AR"}
-              </button>
-            )}
+                Reiniciar
+              </motion.button>
+              {isArSupported && (
+                <motion.button
+                  onClick={handleToggleAr}
+                  className={`${
+                    isArMode ? "bg-red-500 hover:bg-red-600" : "bg-orange-500 hover:bg-orange-600"
+                  } text-white px-4 py-2 rounded-full font-['Roboto'] text-sm shadow-md transition-all duration-200`}
+                  whileHover={{ scale: 1.05 }}
+                >
+                  {isArMode ? "Salir de AR" : "Ver en AR"}
+                </motion.button>
+              )}
+            </div>
+            <div className="absolute bottom-4 left-4 text-xs text-gray-700 font-['Roboto'] bg-white/90 p-2 rounded-lg shadow-md z-20">
+              <p>© Izquierda + arrastrar: Rotar</p>
+              <p>© Rueda: Zoom</p>
+              <p>© Derecha + arrastrar: Mover</p>
+            </div>
           </motion.div>
-          <div className="flex flex-wrap justify-center gap-4">{renderedCards}</div>
+
+          {/* Thumbnails Debajo del Visor */}
+          <motion.div
+            className="flex justify-center gap-6"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+          >
+            {renderedThumbnails}
+          </motion.div>
         </div>
+
+        {/* Panel Lateral Derecho - Solo Título y QR */}
+        <motion.div
+          className="lg:col-span-1 flex flex-col gap-8"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <div className="text-center lg:text-left">
+            <motion.h2
+              className="text-4xl font-extrabold text-gray-900 font-['Roboto'] cursor-pointer"
+              variants={textVariants}
+              whileHover="hover"
+            >
+              Explora en 3D y AR
+            </motion.h2>
+            <motion.p
+              className="text-lg text-gray-600 font-['Roboto'] mt-3 cursor-pointer"
+              variants={textVariants}
+              whileHover="hover"
+            >
+              Visualiza tus platillos favoritos.
+            </motion.p>
+          </div>
+
+          <motion.div
+            className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 flex flex-col items-center self-end w-full max-w-xs"
+            variants={qrVariants}
+            initial="initial"
+            animate="animate"
+            whileHover="hover"
+          >
+            <motion.p
+              className="text-base font-medium text-gray-800 font-['Roboto'] mb-4 cursor-pointer text-center"
+              variants={textVariants}
+              whileHover="hover"
+            >
+              ¡Explora nuestra carta digital en AR!
+            </motion.p>
+            <img
+              src="/path-to-qr-code.png" // Reemplaza con tu QR real
+              alt="QR para Carta Digital"
+              className="w-32 h-32 object-contain rounded-lg shadow-md"
+            />
+          </motion.div>
+        </motion.div>
       </div>
     </section>
   );

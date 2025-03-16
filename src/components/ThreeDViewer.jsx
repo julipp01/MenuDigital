@@ -1,228 +1,157 @@
-import React, { useRef, useEffect, useState, Suspense } from "react";
+import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
-import { ARButton } from "three/examples/jsm/webxr/ARButton";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-const ThreeDViewer = React.memo(({
+const ThreeDViewer = ({
   modelUrl,
-  width = 64,
-  height = 64,
+  enableAr = false,
   scale = [1, 1, 1],
-  autoRotate = false,
-  backgroundColor = "#f5f5f5",
-  ambientLightIntensity = 1.5,
-  directionalLightIntensity = 1.3,
-  enableAR = false,
-  arScale = [0.1, 0.1, 0.1],
-  fallback = <div className="text-xs text-gray-500">Cargando modelo...</div>,
+  backgroundColor = "#ffffff",
+  onLoad = () => {},
+  onError = () => {},
 }) => {
   const mountRef = useRef(null);
-  const controlsRef = useRef(null);
+  const sceneRef = useRef(null);
+  const cameraRef = useRef(null);
   const rendererRef = useRef(null);
+  const controlsRef = useRef(null);
   const modelRef = useRef(null);
-  const [isARActive, setIsARActive] = useState(false);
+  const animationFrameId = useRef(null);
 
   useEffect(() => {
-    if (!modelUrl) return;
-
-    // Configuración básica
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    rendererRef.current = renderer;
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.xr.enabled = true;
-    renderer.setClearColor(backgroundColor, isARActive ? 0 : 1);
-
-    const currentMount = mountRef.current;
-    if (currentMount) {
-      currentMount.innerHTML = "";
-      currentMount.appendChild(renderer.domElement);
+    if (!modelUrl) {
+      onError("No se proporcionó URL del modelo");
+      return;
     }
 
-    // Iluminación
-    const ambientLight = new THREE.AmbientLight(0xffffff, ambientLightIntensity);
+    // Configuración de la escena
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(backgroundColor);
+    sceneRef.current = scene;
+
+    // Configuración de la cámara
+    const mount = mountRef.current;
+    const camera = new THREE.PerspectiveCamera(75, mount.clientWidth / mount.clientHeight, 0.1, 1000);
+    camera.position.set(0, 0, 5);
+    cameraRef.current = camera;
+
+    // Configuración del renderizador con manejo de errores
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      rendererRef.current = renderer;
+      renderer.setSize(mount.clientWidth, mount.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      mount.appendChild(renderer.domElement);
+    } catch (e) {
+      onError("Error al inicializar WebGL: " + e.message);
+      return;
+    }
+
+    // Iluminación optimizada
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
     scene.add(ambientLight);
-    const directionalLight = new THREE.DirectionalLight(0xffffff, directionalLightIntensity);
-    directionalLight.position.set(5, 10, 7.5);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(5, 5, 5);
     scene.add(directionalLight);
 
-    // Cargar modelo
+    // Carga del modelo
     const loader = new GLTFLoader();
     loader.load(
       modelUrl,
       (gltf) => {
-        modelRef.current = gltf.scene;
-        modelRef.current.scale.set(...scale); // Escala para modo normal
-        modelRef.current.visible = true;
-        scene.add(modelRef.current);
+        if (modelRef.current) scene.remove(modelRef.current);
+        const model = gltf.scene;
+        modelRef.current = model;
 
-        const box = new THREE.Box3().setFromObject(modelRef.current);
+        // Escala y centrado
+        model.scale.set(...scale);
+        const box = new THREE.Box3().setFromObject(model);
         const center = box.getCenter(new THREE.Vector3());
-        modelRef.current.position.sub(center);
-        const size = box.getSize(new THREE.Vector3()).length();
-        camera.position.z = size * 1.5;
+        const size = box.getSize(new THREE.Vector3());
+        model.position.sub(center);
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const autoScale = 3 / maxDim;
+        model.scale.multiplyScalar(autoScale);
+
+        // Optimización del modelo
+        model.traverse((child) => {
+          if (child.isMesh) {
+            child.geometry.computeVertexNormals();
+            child.material.side = THREE.DoubleSide;
+          }
+        });
+
+        scene.add(model);
+        onLoad();
       },
       undefined,
       (error) => {
-        console.error("[ThreeDViewer] Error al cargar modelo:", error.message);
-        if (currentMount) {
-          currentMount.innerHTML = "";
-          currentMount.appendChild(fallback);
-        }
+        console.error("[ThreeDViewer] Error al cargar el modelo:", error.message);
+        onError("No se pudo cargar el modelo: " + error.message);
       }
     );
 
-    // Controles para modo no-AR
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controlsRef.current = controls;
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.enableZoom = true;
-    controls.enablePan = false;
-    controls.autoRotate = autoRotate;
-
-    // Configuración AR
-    let hitTestSource = null;
-    let hitTestSourceRequested = false;
-    let reticle = null;
-
-    const initializeAR = () => {
-      setIsARActive(true);
-      controls.enabled = false;
-      renderer.setClearColor(0x000000, 0);
-
-      // Crear un retículo más estético
-      reticle = new THREE.Group();
-
-      // Círculo principal con borde suave
-      const outerCircle = new THREE.Mesh(
-        new THREE.CircleGeometry(0.2, 32),
-        new THREE.MeshBasicMaterial({
-          color: 0xffffff,
-          transparent: true,
-          opacity: 0.3,
-          side: THREE.DoubleSide,
-        })
-      );
-      outerCircle.rotation.x = -Math.PI / 2;
-
-      // Círculo interior (punto central)
-      const innerCircle = new THREE.Mesh(
-        new THREE.CircleGeometry(0.02, 32),
-        new THREE.MeshBasicMaterial({
-          color: 0xffffff,
-          side: THREE.DoubleSide,
-        })
-      );
-      innerCircle.rotation.x = -Math.PI / 2;
-
-      reticle.add(outerCircle);
-      reticle.add(innerCircle);
-
-      reticle.matrixAutoUpdate = false;
-      reticle.visible = false;
-      scene.add(reticle);
-
-      if (modelRef.current) {
-        modelRef.current.scale.set(...arScale); // Usar la escala específica para AR
-      }
-    };
-
-    if (currentMount && enableAR) {
-      navigator.xr.isSessionSupported("immersive-ar").then((supported) => {
-        if (supported) {
-          const arButton = ARButton.createButton(renderer, {
-            requiredFeatures: ["hit-test"],
-            onSessionReady: () => {
-              initializeAR();
-            },
-          });
-          arButton.style.position = "absolute";
-          arButton.style.bottom = "10px";
-          arButton.style.right = "10px";
-          currentMount.appendChild(arButton);
-        }
-      });
+    // Controles
+    let controls;
+    if (!enableAr) {
+      controls = new OrbitControls(camera, renderer.domElement);
+      controlsRef.current = controls;
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.minDistance = 1;
+      controls.maxDistance = 10;
     }
 
-    // Animación optimizada
-    let lastFrameTime = 0;
-    const animate = (time) => {
-      const delta = time - lastFrameTime;
-      if (delta < 16) { // Limitar a ~60 FPS
-        requestAnimationFrame(animate);
-        return;
-      }
-      lastFrameTime = time;
-
-      if (isARActive && renderer.xr.isPresenting) {
-        const session = renderer.xr.getSession();
-        const referenceSpace = renderer.xr.getReferenceSpace();
-        const frame = session.requestAnimationFrame();
-
-        if (!hitTestSourceRequested) {
-          session.requestReferenceSpace("viewer").then((viewerSpace) => {
-            session.requestHitTestSource({ space: viewerSpace }).then((source) => {
-              hitTestSource = source;
-              hitTestSourceRequested = true;
-            });
+    // Soporte AR
+    if (enableAr && "xr" in navigator) {
+      renderer.xr.enabled = true;
+      const startAR = async () => {
+        try {
+          const session = await navigator.xr.requestSession("immersive-ar", {
+            optionalFeatures: ["hit-test", "dom-overlay"],
+            domOverlay: { root: document.body },
           });
+          renderer.xr.setSession(session);
+        } catch (err) {
+          console.error("Error iniciando AR:", err);
+          onError("No se pudo iniciar AR: " + err.message);
         }
+      };
+      startAR();
+    }
 
-        if (hitTestSource && frame && modelRef.current) {
-          const hitTestResults = frame.getHitTestResults(hitTestSource);
-          if (hitTestResults.length > 0) {
-            const hit = hitTestResults[0];
-            const pose = hit.getPose(referenceSpace);
-            reticle.visible = true;
-            reticle.matrix.fromArray(pose.transform.matrix);
-
-            const position = new THREE.Vector3();
-            position.setFromMatrixPosition(reticle.matrix);
-
-            // Ajustar la posición del modelo
-            modelRef.current.position.copy(position);
-            modelRef.current.position.y += 0.05; // Desplazamiento vertical para evitar que el modelo esté "hundido"
-            modelRef.current.visible = true;
-
-            // Rotar el modelo para que esté orientado correctamente (opcional)
-            modelRef.current.rotation.set(0, 0, 0); // Ajustar según la orientación deseada
-          } else {
-            reticle.visible = false;
-            modelRef.current.visible = false;
-          }
-        }
-      } else if (!isARActive && controlsRef.current) {
-        controlsRef.current.update();
-      }
-
-      renderer.render(scene, camera);
-      requestAnimationFrame(animate);
+    // Redimensionamiento
+    const handleResize = () => {
+      const newWidth = mount.clientWidth;
+      const newHeight = mount.clientHeight;
+      camera.aspect = newWidth / newHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(newWidth, newHeight);
     };
-    requestAnimationFrame(animate);
+    window.addEventListener("resize", handleResize);
+    handleResize();
+
+    // Animación
+    const animate = () => {
+      animationFrameId.current = requestAnimationFrame(animate);
+      if (!enableAr && controls) controls.update();
+      renderer.render(scene, camera);
+    };
+    animate();
 
     // Limpieza
     return () => {
-      if (currentMount && renderer.domElement && currentMount.contains(renderer.domElement)) {
-        currentMount.removeChild(renderer.domElement);
-      }
-      if (controlsRef.current) controlsRef.current.dispose();
-      if (rendererRef.current) rendererRef.current.dispose();
-      scene.clear();
-      if (hitTestSource) hitTestSource.cancel();
-      hitTestSourceRequested = false;
+      window.removeEventListener("resize", handleResize);
+      if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
+      if (mount && renderer.domElement) mount.removeChild(renderer.domElement);
+      if (modelRef.current) scene.remove(modelRef.current);
+      renderer.dispose();
     };
-  }, [modelUrl, width, height, scale, autoRotate, backgroundColor, ambientLightIntensity, directionalLightIntensity, enableAR, arScale]);
+  }, [modelUrl, enableAr, scale, backgroundColor, onLoad, onError]);
 
-  return (
-    <Suspense fallback={fallback}>
-      <div ref={mountRef} className="relative" style={{ width: `${width}px`, height: `${height}px` }} />
-    </Suspense>
-  );
-});
+  return <div ref={mountRef} style={{ width: "100%", height: "100%" }} />;
+};
 
 export default ThreeDViewer;
-
