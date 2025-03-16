@@ -92,7 +92,7 @@ const ThreeDViewer = ({
       }
     );
 
-    // Controles
+    // Controles para modo no-AR
     let controls;
     if (!enableAr) {
       controls = new OrbitControls(camera, renderer.domElement);
@@ -104,34 +104,43 @@ const ThreeDViewer = ({
     }
 
     // Soporte AR
-    if (enableAr && "xr" in navigator) {
-      renderer.xr.enabled = true;
-      const startAR = async () => {
-        try {
-          const session = await navigator.xr.requestSession("immersive-ar", {
-            optionalFeatures: ["hit-test", "dom-overlay"],
-            domOverlay: { root: document.body },
-          });
-          arSessionRef.current = session;
-          renderer.xr.setSession(session);
+    const startAR = async () => {
+      if (!("xr" in navigator)) {
+        onError("WebXR no soportado en este dispositivo.");
+        return;
+      }
 
-          // Evitar desplazamiento al salir de AR
-          session.addEventListener("end", () => {
-            setTimeout(() => {
-              window.scrollTo({
-                top: mount.offsetTop,
-                behavior: "smooth",
-              });
-            }, 100); // Retraso para asegurar que AR termine
-          });
-        } catch (err) {
-          console.error("Error iniciando AR:", err);
-          onError("No se pudo iniciar AR: " + err.message);
-        }
-      };
+      renderer.xr.enabled = true;
+      try {
+        const session = await navigator.xr.requestSession("immersive-ar", {
+          optionalFeatures: ["hit-test", "dom-overlay"],
+          domOverlay: { root: document.body },
+        });
+        arSessionRef.current = session;
+        renderer.xr.setSession(session);
+
+        // Manejo de fin de sesión AR
+        session.addEventListener("end", () => {
+          arSessionRef.current = null;
+          renderer.xr.enabled = false;
+          if (controlsRef.current) controlsRef.current.enabled = true; // Reactiva controles si existen
+          setTimeout(() => {
+            window.scrollTo({
+              top: mount.offsetTop - 50, // Ajusta para centrar el visor
+              behavior: "smooth",
+            });
+          }, 100);
+        });
+      } catch (err) {
+        console.error("Error iniciando AR:", err);
+        onError("No se pudo iniciar AR: " + err.message);
+      }
+    };
+
+    if (enableAr) {
       startAR();
-    } else if (enableAr) {
-      onError("WebXR no soportado en este dispositivo.");
+    } else if (arSessionRef.current) {
+      arSessionRef.current.end(); // Termina la sesión AR si se desactiva
     }
 
     // Redimensionamiento

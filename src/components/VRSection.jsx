@@ -52,7 +52,7 @@ const textVariants = {
 const qrVariants = {
   initial: { opacity: 0, y: 20 },
   animate: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
-  hover: { scale: 1.05, boxShadow: "0 8px 20px rgba(249, 115, 22, 0.2)", transition: { duration: 0.2 } },
+  hover: { scale: 1.05, boxShadow: "0 12px 30px rgba(249, 115, 22, 0.25)", transition: { duration: 0.2 } },
 };
 
 const viewerVariants = {
@@ -70,8 +70,15 @@ const VRSection = React.memo(() => {
   useEffect(() => {
     const checkArSupport = async () => {
       if ("xr" in navigator) {
-        const supported = await navigator.xr.isSessionSupported("immersive-ar");
-        setIsArSupported(supported);
+        try {
+          const supported = await navigator.xr.isSessionSupported("immersive-ar");
+          setIsArSupported(supported);
+        } catch (err) {
+          console.error("Error al verificar soporte AR:", err);
+          setIsArSupported(false);
+        }
+      } else {
+        setIsArSupported(false);
       }
     };
     checkArSupport();
@@ -85,7 +92,8 @@ const VRSection = React.memo(() => {
   }, []);
 
   const handleToggleAr = useCallback((e) => {
-    e.preventDefault(); // Evita desplazamientos o comportamientos predeterminados
+    e.preventDefault();
+    e.stopPropagation(); // Evita propagación que pueda causar redirecciones
     if (isArSupported) {
       setIsArMode((prev) => !prev);
     } else {
@@ -215,23 +223,23 @@ const VRSection = React.memo(() => {
           </div>
 
           <motion.div
-            className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 flex flex-col items-center self-end w-full max-w-xs"
+            className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 flex flex-col items-center self-end w-full max-w-sm"
             variants={qrVariants}
             initial="initial"
             animate="animate"
             whileHover="hover"
           >
             <motion.p
-              className="text-base font-medium text-gray-800 font-['Roboto'] mb-4 cursor-pointer text-center"
+              className="text-lg font-semibold text-gray-800 font-['Roboto'] mb-4 cursor-pointer text-center"
               variants={textVariants}
               whileHover="hover"
             >
-              ¡Explora nuestra carta digital en AR!
+              ¡Escanea para ver la carta en AR!
             </motion.p>
             <img
-              src="/qr/qr-carta-digital.png" // Ruta actualizada, ajusta según tu archivo
+              src="/qr/qr-carta-digital.png" // Ajusta según la ruta de tu QR
               alt="QR para Carta Digital"
-              className="w-32 h-32 object-contain rounded-lg shadow-md"
+              className="w-48 h-48 object-contain rounded-xl shadow-lg"
             />
           </motion.div>
         </motion.div>
