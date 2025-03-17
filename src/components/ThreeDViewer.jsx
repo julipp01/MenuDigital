@@ -123,6 +123,11 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
         arSessionRef.current = session;
         renderer.xr.setSession(session);
         console.log("AR iniciado correctamente.");
+
+        session.addEventListener("end", () => {
+          console.log("Sesión AR finalizada");
+          arSessionRef.current = null;
+        });
       } catch (err) {
         onError(`No se pudo iniciar AR: ${err.message}`);
       }
@@ -140,5 +145,6 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
 });
 
 export default ThreeDViewer;
+
 
 
