@@ -14,6 +14,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
   const arSessionRef = useRef(null);
 
   useEffect(() => {
+    console.log("Inicializando Three.js...");
     if (!modelUrl) {
       onError("No se proporcionó URL del modelo");
       return;
@@ -39,6 +40,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
         renderer.xr.enabled = true;
         renderer.xr.setReferenceSpaceType("local-floor");
         mount.appendChild(renderer.domElement);
+        console.log("Renderer WebGL inicializado correctamente");
       } catch (e) {
         onError("Error al inicializar WebGL: " + e.message);
         return;
@@ -48,6 +50,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
     }
 
     // Iluminación
+    console.log("Configurando iluminación...");
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
     scene.add(ambientLight);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -55,6 +58,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
     scene.add(directionalLight);
 
     // Carga del modelo
+    console.log("Cargando modelo: ", modelUrl);
     const loader = new GLTFLoader();
     loader.load(
       modelUrl,
@@ -65,6 +69,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
         model.scale.set(...scale);
         model.position.set(0, 0, 0);
         scene.add(model);
+        console.log("Modelo cargado exitosamente");
         onLoad();
       },
       undefined,
@@ -72,6 +77,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
     );
 
     // Controles
+    console.log("Inicializando controles de órbita...");
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.enableRotate = true;
@@ -91,6 +97,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
     animate();
 
     return () => {
+      console.log("Liberando recursos...");
       if (rendererRef.current) {
         rendererRef.current.setAnimationLoop(null);
         rendererRef.current.dispose();
@@ -120,6 +127,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
       }
 
       const isSupported = await navigator.xr.isSessionSupported("immersive-ar");
+      console.log("AR es compatible:", isSupported);
       if (!isSupported) {
         onError("AR no es compatible en este dispositivo.");
         return;
@@ -141,6 +149,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
         });
         console.log("AR iniciado correctamente");
       } catch (err) {
+        console.error("Error al iniciar AR: ", err);
         onError(`No se pudo iniciar AR: ${err.message}`);
       }
     },
@@ -158,6 +167,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
 });
 
 export default ThreeDViewer;
+
 
 
 
