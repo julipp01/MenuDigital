@@ -38,7 +38,6 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
         renderer.setSize(mount.clientWidth, mount.clientHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.xr.enabled = true;
-        renderer.xr.setReferenceSpaceType("local-floor");
         mount.appendChild(renderer.domElement);
         console.log("Renderer WebGL inicializado correctamente");
       } catch (e) {
@@ -67,7 +66,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
         const model = gltf.scene;
         modelRef.current = model;
         model.scale.set(...scale);
-        model.position.set(0, 0, 0);
+        model.position.set(0, 0, -1); // Ajustar posición para AR
         scene.add(model);
         console.log("Modelo cargado exitosamente");
         onLoad();
@@ -142,9 +141,12 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
           domOverlay: { root: document.body },
         });
 
+        const referenceSpace = await session.requestReferenceSpace("local-floor");
+        renderer.xr.setReferenceSpace(referenceSpace);
+
         arSessionRef.current = session;
         renderer.xr.setSession(session);
-        renderer.setAnimationLoop(() => {
+        session.requestAnimationFrame(() => {
           renderer.render(sceneRef.current, cameraRef.current);
         });
         console.log("AR iniciado correctamente");
@@ -167,6 +169,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
 });
 
 export default ThreeDViewer;
+
 
 
 
