@@ -23,3 +23,11 @@
     opacity: 1;
   }
 }
+/* Ocultar el botón predeterminado de AR en model-viewer */
+model-viewer::part(default-ar-button) {
+  display: none !important;
+}
+
+model-viewer [slot="ar-button"]:not(.custom-ar-button) {
+  display: none !important;
+}

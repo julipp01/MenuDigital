@@ -56,9 +56,6 @@ const ThreeDViewer = forwardRef(
           const progressValue = Math.round(event.detail.totalProgress * 100);
           setProgress(progressValue);
           console.log(`Progreso de carga: ${progressValue}%`);
-          if (progressValue === 100) {
-            setIsLoading(false); // Asegurar que isLoading se desactive al 100%
-          }
         };
         const handleArStatus = (event) => {
           console.log("Estado de AR:", event.detail.status);
@@ -69,12 +66,12 @@ const ThreeDViewer = forwardRef(
         viewer.addEventListener("progress", handleProgress);
         viewer.addEventListener("ar-status", handleArStatus);
 
-        // Fallback: Si no carga en 15 segundos, asumir fallo
+        // Fallback: Solo disparar error si no hay progreso después de 15 segundos
         const fallbackTimeout = setTimeout(() => {
-          if (progress < 100) {
+          if (progress === 0) { // Solo si no ha comenzado a cargar
             setIsLoading(false);
             setLoadFailed(true);
-            onError("Tiempo de carga excedido. Verifica el modelo o tu conexión.");
+            onError("No se pudo iniciar la carga del modelo. Verifica tu conexión.");
           }
         }, 15000);
 
@@ -108,7 +105,8 @@ const ThreeDViewer = forwardRef(
         >
           <button
             slot="ar-button"
-            className="absolute bottom-4 right-4 bg-orange-500 text-white px-4 py-2 rounded-full font-roboto text-sm shadow-md hover:bg-orange-600 transition-all duration-200"
+            className="custom-ar-button absolute bottom-4 right-4 bg-orange-500 text-white px-4 py-2 rounded-full font-roboto text-sm shadow-md hover:bg-orange-600 transition-all duration-200"
+            onClick={() => modelViewerRef.current?.activateAR()}
           >
             Ver en AR
           </button>
