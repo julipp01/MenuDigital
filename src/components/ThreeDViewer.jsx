@@ -30,17 +30,21 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
     cameraRef.current = camera;
 
     let renderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      rendererRef.current = renderer;
-      renderer.setSize(mount.clientWidth, mount.clientHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.xr.enabled = true;
-      renderer.xr.setReferenceSpaceType("local-floor");
-      mount.appendChild(renderer.domElement);
-    } catch (e) {
-      onError("Error al inicializar WebGL: " + e.message);
-      return;
+    if (!rendererRef.current) {
+      try {
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        rendererRef.current = renderer;
+        renderer.setSize(mount.clientWidth, mount.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.xr.enabled = true;
+        renderer.xr.setReferenceSpaceType("local-floor");
+        mount.appendChild(renderer.domElement);
+      } catch (e) {
+        onError("Error al inicializar WebGL: " + e.message);
+        return;
+      }
+    } else {
+      renderer = rendererRef.current;
     }
 
     // Iluminación
@@ -87,11 +91,17 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
     animate();
 
     return () => {
-      renderer.setAnimationLoop(null);
+      if (rendererRef.current) {
+        rendererRef.current.setAnimationLoop(null);
+        rendererRef.current.dispose();
+        rendererRef.current.forceContextLoss(); // Liberar contexto WebGL
+        rendererRef.current = null;
+      }
       cancelAnimationFrame(animationFrameId.current);
       if (arSessionRef.current) arSessionRef.current.end();
-      mount.removeChild(renderer.domElement);
-      renderer.dispose();
+      if (mount.contains(renderer.domElement)) {
+        mount.removeChild(renderer.domElement);
+      }
     };
   }, [modelUrl, enableAr, scale, backgroundColor, onLoad, onError]);
 
@@ -101,6 +111,12 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
       if (!("xr" in navigator)) {
         onError("WebXR no soportado en este dispositivo.");
         return;
+      }
+
+      if (arSessionRef.current) {
+        console.warn("Una sesión AR ya está activa, finalizándola antes de iniciar una nueva.");
+        await arSessionRef.current.end();
+        arSessionRef.current = null;
       }
 
       const isSupported = await navigator.xr.isSessionSupported("immersive-ar");
@@ -142,6 +158,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
 });
 
 export default ThreeDViewer;
+
 
 
 
