@@ -1,12 +1,13 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef, memo } from "react";
 import { motion } from "framer-motion";
 import ThreeDViewer from "./ThreeDViewer";
 
-// Lista estática de modelos (sin cambios)
+// Lista estática de modelos
 const models = [
   {
     name: "Platillo 1",
     url: "/models/example.glb",
+    iosUrl: "/models/example.usdz",
     thumbnail: "/thumbnails/example.jpg",
     scale: [1, 1, 1],
     description: "Un delicioso platillo principal con sabores únicos.",
@@ -15,6 +16,7 @@ const models = [
   {
     name: "Platillo 2",
     url: "/models/dish2.glb",
+    iosUrl: "/models/dish2.usdz",
     thumbnail: "/thumbnails/dish2.jpg",
     scale: [1, 1, 1],
     description: "Postre exquisito y único para los amantes del dulce.",
@@ -23,6 +25,7 @@ const models = [
   {
     name: "Platillo 3",
     url: "/models/dish3.glb",
+    iosUrl: "/models/dish3.usdz",
     thumbnail: "/thumbnails/dish3.jpg",
     scale: [1, 1, 1],
     description: "Bebida refrescante con un toque especial.",
@@ -30,29 +33,35 @@ const models = [
   },
 ];
 
-// Animaciones (sin cambios)
+// Modelo por defecto
+const defaultModel = {
+  name: "Modelo por Defecto",
+  url: "/models/default.glb",
+  iosUrl: "/models/default.usdz",
+  thumbnail: "/thumbnails/default.jpg",
+  scale: [1, 1, 1],
+  description: "Modelo de respaldo",
+  price: "N/A",
+};
+
+// Variantes de animación
 const buttonVariants = {
   initial: { opacity: 0, y: 15 },
   animate: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
   hover: { scale: 1.1, boxShadow: "0 10px 25px rgba(249, 115, 22, 0.3)", transition: { duration: 0.2 } },
-  selected: {
-    scale: 1.05,
-    borderColor: "#f97316",
-    boxShadow: "0 0 15px rgba(249, 115, 22, 0.5)",
-    transition: { duration: 0.2 },
-  },
+  selected: { scale: 1.05, borderColor: "#f97316", boxShadow: "0 0 15px rgba(249, 115, 22, 0.5)" },
 };
 
 const textVariants = {
   initial: { opacity: 0, y: 20 },
   animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
-  hover: { color: "#f97316", scale: 1.02, transition: { duration: 0.2 } },
+  hover: { color: "#f97316", scale: 1.02 },
 };
 
 const qrVariants = {
   initial: { opacity: 0, y: 20 },
   animate: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
-  hover: { scale: 1.05, boxShadow: "0 12px 30px rgba(249, 115, 22, 0.25)", transition: { duration: 0.2 } },
+  hover: { scale: 1.05, boxShadow: "0 12px 30px rgba(249, 115, 22, 0.25)" },
 };
 
 const viewerVariants = {
@@ -60,35 +69,36 @@ const viewerVariants = {
   animate: { opacity: 1, scale: 1, transition: { duration: 0.6, ease: "easeOut" } },
 };
 
-const VRSection = React.memo(() => {
-  const [selectedModel, setSelectedModel] = useState(models[0]);
+const VRSection = memo(() => {
+  const [selectedModel, setSelectedModel] = useState(models[0] || defaultModel);
   const [isArMode, setIsArMode] = useState(false);
   const [isArSupported, setIsArSupported] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const viewerRef = useRef(null); // Referencia al componente ThreeDViewer
+  const viewerRef = useRef(null);
 
-  // Verificación de soporte AR (sin cambios)
   useEffect(() => {
     const checkArSupport = async () => {
-      if ("xr" in navigator) {
-        try {
-          const supported = await navigator.xr.isSessionSupported("immersive-ar");
-          setIsArSupported(supported);
-        } catch (err) {
-          console.error("Error al verificar soporte AR:", err);
-          setIsArSupported(false);
-        }
-      } else {
+      try {
+        const supported = "xr" in navigator && (await navigator.xr.isSessionSupported("immersive-ar"));
+        setIsArSupported(supported);
+      } catch (err) {
+        console.error("Error al verificar soporte AR:", err);
         setIsArSupported(false);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     checkArSupport();
   }, []);
 
   const handleSelectModel = useCallback((model) => {
-    setSelectedModel(model);
+    if (!model || !model.url) {
+      console.error("Modelo inválido seleccionado:", model);
+      setSelectedModel(defaultModel);
+    } else {
+      setSelectedModel(model);
+    }
     setIsArMode(false);
     setLoading(true);
     setError(null);
@@ -97,22 +107,21 @@ const VRSection = React.memo(() => {
   const handleToggleAr = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!viewerRef.current) return;
+
     if (isArSupported) {
       if (!isArMode) {
-        // Iniciar AR directamente desde el manejador de eventos
         viewerRef.current.startAR();
         setIsArMode(true);
       } else {
-        // Finalizar AR
         viewerRef.current.endAR();
         setIsArMode(false);
       }
     } else {
-      alert("AR no soportado. Usa Chrome en Android o Safari en iOS con WebXR habilitado.");
+      alert("AR no soportado. Usa Chrome en Android o Safari en iOS.");
     }
   }, [isArSupported, isArMode]);
 
-  // Renderizado de thumbnails (sin cambios)
   const renderedThumbnails = models.map((model) => (
     <motion.button
       key={model.url}
@@ -122,6 +131,7 @@ const VRSection = React.memo(() => {
       whileHover="hover"
       onClick={() => handleSelectModel(model)}
       className="relative bg-white rounded-xl shadow-md overflow-hidden border-2 border-gray-200 w-28 h-32 focus:outline-none focus:ring-2 focus:ring-orange-400 transition-all duration-200"
+      aria-label={`Seleccionar ${model.name}`}
     >
       <img
         src={model.thumbnail}
@@ -137,10 +147,19 @@ const VRSection = React.memo(() => {
     </motion.button>
   ));
 
+  if (!selectedModel || !selectedModel.url) {
+    return (
+      <section id="3d" className="py-16 bg-gray-50 min-h-screen flex items-center justify-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-red-600">
+          <p>Error: No se pudo cargar el modelo seleccionado.</p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section id="3d" className="py-16 bg-gray-50 min-h-screen flex items-center justify-center">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {/* Visor Principal y Thumbnails */}
         <div className="lg:col-span-3 flex flex-col gap-6">
           <motion.div
             variants={viewerVariants}
@@ -150,7 +169,7 @@ const VRSection = React.memo(() => {
           >
             {loading && (
               <div className="absolute inset-0 flex items-center justify-center text-gray-600 bg-gray-100/70 z-10">
-                <svg className="animate-spin h-10 w-10 text-orange-500" viewBox="0 0 24 24">
+                <svg className="animate-spin h-10 w-10 text-orange-500" viewBox="0 0 24 24" aria-hidden="true">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
@@ -162,10 +181,11 @@ const VRSection = React.memo(() => {
               </div>
             )}
             <ThreeDViewer
-              ref={viewerRef} // Pasar la referencia
+              key={selectedModel.url}
+              ref={viewerRef}
               modelUrl={selectedModel.url}
+              iosModelUrl={selectedModel.iosUrl}
               scale={selectedModel.scale}
-              enableAr={isArMode && isArSupported}
               backgroundColor="#ffffff"
               onLoad={() => setLoading(false)}
               onError={(err) => {
@@ -175,17 +195,22 @@ const VRSection = React.memo(() => {
             />
             <div className="absolute top-4 left-4 flex gap-3 z-20">
               <motion.button
-                onClick={() => window.dispatchEvent(new CustomEvent("resetView"))}
+                onClick={() => handleSelectModel(selectedModel)}
                 className="bg-white text-orange-600 px-4 py-2 rounded-full hover:bg-orange-50 border border-orange-200 font-['Roboto'] text-sm shadow-md transition-all duration-200"
                 whileHover={{ scale: 1.05 }}
+                aria-label="Reiniciar vista del modelo"
               >
                 Reiniciar
               </motion.button>
+              {/* Botón externo opcional, puedes eliminarlo si prefieres solo el botón del slot */}
               {isArSupported && (
                 <motion.button
                   onClick={handleToggleAr}
-                  className={`${isArMode ? "bg-red-500 hover:bg-red-600" : "bg-orange-500 hover:bg-orange-600"} text-white px-4 py-2 rounded-full font-['Roboto'] text-sm shadow-md transition-all duration-200`}
+                  className={`${
+                    isArMode ? "bg-red-500 hover:bg-red-600" : "bg-orange-500 hover:bg-orange-600"
+                  } text-white px-4 py-2 rounded-full font-['Roboto'] text-sm shadow-md transition-all duration-200`}
                   whileHover={{ scale: 1.05 }}
+                  aria-label={isArMode ? "Salir de AR" : "Ver en AR"}
                 >
                   {isArMode ? "Salir de AR" : "Ver en AR"}
                 </motion.button>
@@ -198,9 +223,8 @@ const VRSection = React.memo(() => {
             </div>
           </motion.div>
 
-          {/* Thumbnails Debajo del Visor */}
           <motion.div
-            className="flex justify-center gap-6"
+            className="flex justify-center gap-6 flex-wrap"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
@@ -209,7 +233,6 @@ const VRSection = React.memo(() => {
           </motion.div>
         </div>
 
-        {/* Panel Lateral Derecho (sin cambios) */}
         <motion.div
           className="lg:col-span-1 flex flex-col gap-8"
           initial={{ opacity: 0, x: 20 }}
@@ -232,7 +255,6 @@ const VRSection = React.memo(() => {
               Visualiza tus platillos favoritos.
             </motion.p>
           </div>
-
           <motion.div
             className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 flex flex-col items-center self-end w-full max-w-sm"
             variants={qrVariants}
@@ -251,6 +273,7 @@ const VRSection = React.memo(() => {
               src="/qr/qr-carta-digital.png"
               alt="QR para Carta Digital"
               className="w-48 h-48 object-contain rounded-xl shadow-lg"
+              loading="lazy"
             />
           </motion.div>
         </motion.div>
