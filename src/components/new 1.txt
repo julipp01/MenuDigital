@@ -252,12 +252,12 @@ const MenuEditor = ({ restaurantId }) => {
   );
 
   const saveConfig = useCallback(
-    async (overrideLogo) => { // Eliminamos el valor por defecto para forzar el uso explícito de overrideLogo
+    async (overrideLogo = logo) => {
       try {
         const configData = {
           name: restaurantName,
           colors,
-          logo: overrideLogo || logo, // Si no se pasa overrideLogo, usamos el estado actual
+          logo: overrideLogo || logo,
           sections: { ...menuSections },
           plan_id: planId,
         };
@@ -267,7 +267,7 @@ const MenuEditor = ({ restaurantId }) => {
         const response = await api.put(`/restaurantes/${restaurantId}`, configData, { timeout: 20000 });
         console.log("[MenuEditor] Respuesta de PUT:", response.data);
         toast.success("Configuración guardada con éxito");
-        await fetchData(); // Recargamos los datos para reflejar los cambios en el servidor
+        await fetchData();
       } catch (err) {
         console.error("[MenuEditor] Error al guardar configuración:", err.message, err.response?.data);
         toast.error(`Error al guardar la configuración: ${err.response?.data?.error || err.message}`);
@@ -349,8 +349,8 @@ const MenuEditor = ({ restaurantId }) => {
       const newLogoUrl = await uploadFile(file, `/restaurantes/${restaurantId}/upload-logo`, "logo");
       if (newLogoUrl) {
         console.log("[MenuEditor] Nueva URL del logo antes de actualizar estado:", newLogoUrl);
-        setLogo(newLogoUrl);  // Actualizamos el estado del logo para la UI
-        await saveConfig(newLogoUrl); // Guardamos la configuración inmediatamente con la nueva URL
+        setLogo(newLogoUrl);
+        setTimeout(() => saveConfig(newLogoUrl), 500);
       }
     } catch (err) {
       console.error("[MenuEditor] Error al subir logo:", err.message);

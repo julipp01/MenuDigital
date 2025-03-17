@@ -1,8 +1,3 @@
-// === SECCIÓN 1: IMPORTACIONES Y CONFIGURACIONES INICIALES ===
-// Propósito: Importar dependencias y definir configuraciones globales.
-// Funciones utilizadas: Ninguna (solo importaciones y constantes).
-// Dependencias: React, servicios API, contexto de autenticación, animaciones, notificaciones, QR, compresión de imágenes, visor 3D, WebSocket.
-
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import api from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,14 +10,8 @@ import Compressor from "compressorjs";
 import ThreeDViewer from "@/components/ThreeDViewer";
 import useSocket from "@/hooks/useSocket";
 
-// Configuraciones globales
 const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || window.location.origin;
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
-
-// === SECCIÓN 2: COMPONENTE MEDIAVIEWER (VISUALIZACIÓN DE MEDIOS) ===
-// Propósito: Renderizar imágenes o modelos 3D para ítems del menú.
-// Funciones utilizadas: Ninguna (es un componente funcional).
-// Dependencias: React, ThreeDViewer.
 
 const MediaViewer = React.memo(({ item }) => {
   if (!item.imageUrl) {
@@ -52,10 +41,6 @@ const MediaViewer = React.memo(({ item }) => {
     />
   );
 });
-// === SECCIÓN 3: ESTADO Y HOOKS PERSONALIZADOS ===
-// Propósito: Gestionar el estado del componente y conectar con hooks personalizados.
-// Funciones utilizadas: Ninguna (solo definiciones de estado y hooks).
-// Dependencias: React, useAuth, useSocket.
 
 const MenuEditor = ({ restaurantId }) => {
   const { user } = useAuth();
@@ -90,13 +75,7 @@ const MenuEditor = ({ restaurantId }) => {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
-  const [showEditModal, setShowEditModal] = useState(false);
-  // === SECCIÓN 4: FUNCIONES DE UTILIDAD (VALIDACIÓN Y CONSTRUCCIÓN DE URLs) ===
-// Propósito: Proporcionar funciones reutilizables para validar URLs y construir URLs completas.
-// Funciones utilizadas:
-// - validateUrl: Valida si una URL es accesible.
-// - buildImageUrl: Construye URLs completas para imágenes.
-// Dependencias: React (useCallback), fetch, API_BASE_URL.
+  const [showEditModal, setShowEditModal] = useState(false); // Nuevo estado para el modal
 
   const validateUrl = useCallback(async (url) => {
     if (!url) return false;
@@ -126,12 +105,6 @@ const MenuEditor = ({ restaurantId }) => {
     },
     [API_BASE_URL]
   );
-  // === SECCIÓN 5: FUNCIONES DE CARGA DE DATOS ===
-// Propósito: Cargar datos iniciales del restaurante, plantillas y menú.
-// Funciones utilizadas:
-// - createRestaurantFallback: Crea un restaurante predeterminado si no existe.
-// - fetchData: Carga datos del servidor y actualiza el estado.
-// Dependencias: React (useCallback), api, user, buildImageUrl, validateUrl, toast.
 
   const createRestaurantFallback = useCallback(async () => {
     try {
@@ -195,7 +168,7 @@ const MenuEditor = ({ restaurantId }) => {
 
       const items = (menuResponse.data.items || []).map((item) => ({
         ...item,
-        imageUrl: buildImageUrl(item.image_url),
+        imageUrl: buildImageUrl(item.image_url), // Aseguramos que la URL sea completa
       }));
       const validatedItems = await Promise.all(
         items.map(async (item) => ({
@@ -212,12 +185,6 @@ const MenuEditor = ({ restaurantId }) => {
       setLoading(false);
     }
   }, [restaurantId, user, buildImageUrl, validateUrl, createRestaurantFallback]);
-  // === SECCIÓN 6: FUNCIONES DE GESTIÓN DE CONFIGURACIÓN ===
-// Propósito: Gestionar la configuración del restaurante (plantillas, colores, etc.).
-// Funciones utilizadas:
-// - handleTemplateChange: Cambia la plantilla seleccionada.
-// - saveConfig: Guarda la configuración en el servidor.
-// Dependencias: React (useCallback), api, toast, templates, restaurantId, restaurantName, menuSections, colors, logo, planId, fetchData.
 
   const handleTemplateChange = useCallback(
     async (e) => {
@@ -228,6 +195,7 @@ const MenuEditor = ({ restaurantId }) => {
         return;
       }
 
+      // Construimos la solicitud con todos los datos requeridos
       const dataToSend = {
         template_id: template.id,
         name: restaurantName || "Mi Restaurante",
@@ -251,13 +219,25 @@ const MenuEditor = ({ restaurantId }) => {
     [templates, restaurantId, restaurantName, menuSections, colors, logo, planId]
   );
 
+  useEffect(() => {
+    fetchData();
+    if (isConnected && socket) {
+      const handleMenuUpdate = () => {
+        toast.info("Menú actualizado en tiempo real");
+        fetchData();
+      };
+      socket.addEventListener("message", handleMenuUpdate);
+      return () => socket.removeEventListener("message", handleMenuUpdate);
+    }
+  }, [fetchData, isConnected, socket]);
+
   const saveConfig = useCallback(
-    async (overrideLogo) => { // Eliminamos el valor por defecto para forzar el uso explícito de overrideLogo
+    async (overrideLogo = logo) => {
       try {
         const configData = {
           name: restaurantName,
           colors,
-          logo: overrideLogo || logo, // Si no se pasa overrideLogo, usamos el estado actual
+          logo: overrideLogo || logo, // Asegurar que use la nueva URL
           sections: { ...menuSections },
           plan_id: planId,
         };
@@ -267,7 +247,7 @@ const MenuEditor = ({ restaurantId }) => {
         const response = await api.put(`/restaurantes/${restaurantId}`, configData, { timeout: 20000 });
         console.log("[MenuEditor] Respuesta de PUT:", response.data);
         toast.success("Configuración guardada con éxito");
-        await fetchData(); // Recargamos los datos para reflejar los cambios en el servidor
+        await fetchData();
       } catch (err) {
         console.error("[MenuEditor] Error al guardar configuración:", err.message, err.response?.data);
         toast.error(`Error al guardar la configuración: ${err.response?.data?.error || err.message}`);
@@ -275,13 +255,6 @@ const MenuEditor = ({ restaurantId }) => {
     },
     [restaurantId, restaurantName, colors, logo, menuSections, planId, fetchData]
   );
-  // === SECCIÓN 7: FUNCIONES DE CARGA Y SUBIDA DE ARCHIVOS ===
-// Propósito: Gestionar la subida de archivos (logos, imágenes, modelos 3D) al servidor.
-// Funciones utilizadas:
-// - uploadFile: Sube un archivo al servidor y retorna la URL.
-// - handleLogoUpload: Maneja la subida de logos.
-// - handleImageUpload: Maneja la subida de imágenes o modelos 3D para ítems del menú.
-// Dependencias: React (useCallback), Compressor, api, buildImageUrl, validateUrl, toast, restaurantId, editingItem, fetchData.
 
   const uploadFile = useCallback(
     async (file, endpoint, fieldName = "file", additionalData = {}) => {
@@ -349,8 +322,8 @@ const MenuEditor = ({ restaurantId }) => {
       const newLogoUrl = await uploadFile(file, `/restaurantes/${restaurantId}/upload-logo`, "logo");
       if (newLogoUrl) {
         console.log("[MenuEditor] Nueva URL del logo antes de actualizar estado:", newLogoUrl);
-        setLogo(newLogoUrl);  // Actualizamos el estado del logo para la UI
-        await saveConfig(newLogoUrl); // Guardamos la configuración inmediatamente con la nueva URL
+        setLogo(newLogoUrl);  // Actualiza el estado del logo
+        setTimeout(() => saveConfig(newLogoUrl), 500); // Esperar un poco antes de guardar configuración
       }
     } catch (err) {
       console.error("[MenuEditor] Error al subir logo:", err.message);
@@ -367,10 +340,11 @@ const MenuEditor = ({ restaurantId }) => {
       });
       if (newImageUrl) {
         if (editingItem) {
+          // Actualizar el ítem en edición con la nueva URL y guardar
           const updatedItem = { ...editingItem, imageUrl: newImageUrl };
           setNewItem(updatedItem);
           await api.put(`/menu/${restaurantId}/${editingItem.id}`, updatedItem, { timeout: 20000 });
-          await fetchData();
+          await fetchData(); // Recargar datos para reflejar el cambio
         } else {
           setNewItem((prev) => ({ ...prev, imageUrl: newImageUrl }));
         }
@@ -378,13 +352,6 @@ const MenuEditor = ({ restaurantId }) => {
     },
     [restaurantId, uploadFile, editingItem, fetchData]
   );
-  // === SECCIÓN 8: FUNCIONES DE GESTIÓN DE ÍTEMS DEL MENÚ ===
-// Propósito: Gestionar la adición, actualización y eliminación de ítems del menú.
-// Funciones utilizadas:
-// - handleAddOrUpdateItem: Agrega o actualiza un ítem en el menú.
-// - handleCancelEdit: Cancela la edición de un ítem.
-// - handleDeleteItem: Elimina un ítem del menú.
-// Dependencias: React (useCallback), api, toast, restaurantId, editingItem, newItem, fetchData, socket.
 
   const handleAddOrUpdateItem = useCallback(
     async (e) => {
@@ -399,7 +366,7 @@ const MenuEditor = ({ restaurantId }) => {
         await api.request({ method, url, data: newItem, timeout: 20000 });
         setNewItem({ name: "", price: "", description: "", category: "Platos Principales", imageUrl: "" });
         setEditingItem(null);
-        setShowEditModal(false);
+        setShowEditModal(false); // Cerrar modal tras guardar
         await fetchData();
         toast.success(`Ítem ${editingItem ? "actualizado" : "agregado"} con éxito`);
         if (socket) {
@@ -416,7 +383,7 @@ const MenuEditor = ({ restaurantId }) => {
   const handleCancelEdit = useCallback(() => {
     setEditingItem(null);
     setNewItem({ name: "", price: "", description: "", category: "Platos Principales", imageUrl: "" });
-    setShowEditModal(false);
+    setShowEditModal(false); // Cerrar modal al cancelar
   }, []);
 
   const handleDeleteItem = useCallback(
@@ -439,13 +406,6 @@ const MenuEditor = ({ restaurantId }) => {
     },
     [restaurantId, fetchData, socket]
   );
-  // === SECCIÓN 9: FUNCIONES DE GESTIÓN DE SECCIONES ===
-// Propósito: Gestionar las secciones del menú (renombrar, eliminar, agregar).
-// Funciones utilizadas:
-// - handleRenameSection: Renombra una sección existente.
-// - handleDeleteSection: Elimina una sección.
-// - handleAddSection: Agrega una nueva sección.
-// Dependencias: React (useCallback), window.confirm, toast, menuSections, saveConfig.
 
   const handleRenameSection = useCallback(
     (oldKey, newKey) => {
@@ -496,12 +456,6 @@ const MenuEditor = ({ restaurantId }) => {
     },
     [menuSections, saveConfig]
   );
-  // === SECCIÓN 10: FUNCIONES DE QR Y VISTA PREVIA ===
-// Propósito: Gestionar la generación y descarga de códigos QR y la lógica de la vista previa.
-// Funciones utilizadas:
-// - handleDownloadQR: Descarga el código QR como imagen.
-// - filteredSections: Memoiza las secciones filtradas para la vista previa.
-// Dependencias: React (useCallback, useMemo), toPng, toast, qrRef, restaurantId, FRONTEND_URL, colors, menuSections, menuItems.
 
   const handleDownloadQR = useCallback(async () => {
     if (!qrRef.current) return;
@@ -524,35 +478,6 @@ const MenuEditor = ({ restaurantId }) => {
       items: menuItems.filter((item) => item.category === section),
     }));
   }, [menuSections, menuItems]);
-  // === SECCIÓN 11: RENDERIZADO DEL COMPONENTE PRINCIPAL (UI) ===
-// Propósito: Renderizar la interfaz de usuario y manejar efectos secundarios.
-// Funciones utilizadas:
-// - fetchData (Sección 5): Carga datos iniciales.
-// - handleTemplateChange (Sección 6): Cambia la plantilla.
-// - saveConfig (Sección 6): Guarda la configuración.
-// - handleLogoUpload (Sección 7): Sube el logo.
-// - handleImageUpload (Sección 7): Sube imágenes o modelos 3D.
-// - handleAddOrUpdateItem (Sección 8): Agrega o actualiza ítems.
-// - handleCancelEdit (Sección 8): Cancela la edición de ítems.
-// - handleDeleteItem (Sección 8): Elimina ítems.
-// - handleRenameSection (Sección 9): Renombra secciones.
-// - handleDeleteSection (Sección 9): Elimina secciones.
-// - handleAddSection (Sección 9): Agrega secciones.
-// - handleDownloadQR (Sección 10): Descarga el código QR.
-// - filteredSections (Sección 10): Memoiza las secciones filtradas.
-// Dependencias: React (useEffect), motion, AnimatePresence, ToastContainer, QRCodeCanvas, user, restaurantId, socket, isConnected, colors, logo, templates, selectedTemplate, restaurantName, menuSections, planId, showQRModal, editingSection, newSectionName, showPreview, loading, uploading, error, showEditModal, setShowQRModal, setEditingSection, setNewSectionName, setShowPreview, setShowEditModal.
-
-  useEffect(() => {
-    fetchData();
-    if (isConnected && socket) {
-      const handleMenuUpdate = () => {
-        toast.info("Menú actualizado en tiempo real");
-        fetchData();
-      };
-      socket.addEventListener("message", handleMenuUpdate);
-      return () => socket.removeEventListener("message", handleMenuUpdate);
-    }
-  }, [fetchData, isConnected, socket]);
 
   if (!user || !restaurantId) {
     return <div className="p-4 text-red-600">Error: Faltan datos de usuario o restaurante</div>;
@@ -942,7 +867,7 @@ const MenuEditor = ({ restaurantId }) => {
                                 onClick={() => {
                                   setEditingItem(item);
                                   setNewItem({ ...item });
-                                  setShowEditModal(true);
+                                  setShowEditModal(true); // Abrir modal al editar
                                 }}
                                 className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-xs"
                                 aria-label={`Editar ítem ${item.name}`}
@@ -1121,3 +1046,10 @@ const MenuEditor = ({ restaurantId }) => {
 };
 
 export default MenuEditor;
+
+
+
+
+
+
+
