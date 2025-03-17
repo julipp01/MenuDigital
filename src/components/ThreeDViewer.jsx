@@ -22,7 +22,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
   const modelRef = useRef(null);
   const arSessionRef = useRef(null);
 
-  // Función para ajustar el modelo al 60% del cuadro
+  // Función para ajustar el modelo al 54% del cuadro (60% - 10%)
   const adjustModelToFrame = (model, camera, mount) => {
     const box = new THREE.Box3().setFromObject(model);
     const size = box.getSize(new THREE.Vector3());
@@ -31,10 +31,10 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
     // Calcular el tamaño máximo del modelo (diagonal de la caja delimitadora)
     const maxDim = Math.max(size.x, size.y, size.z);
 
-    // Calcular el campo de visión necesario para que el modelo ocupe el 60% del cuadro
+    // Calcular el campo de visión necesario para que el modelo ocupe el 54% del cuadro
     const fov = camera.fov * (Math.PI / 180);
     const aspect = mount.clientWidth / mount.clientHeight;
-    const targetSize = maxDim / 0.6; // Queremos que ocupe el 60% del cuadro
+    const targetSize = maxDim / 0.54; // Ajustado de 0.6 a 0.54 (60% - 10%)
     const distance = targetSize / (2 * Math.tan(fov / 2));
 
     // Ajustar la posición de la cámara para que el modelo esté centrado y visible
@@ -101,7 +101,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
         modelRef.current = model;
         scene.add(model);
 
-        // Ajustar el modelo para que ocupe el 60% del cuadro
+        // Ajustar el modelo para que ocupe el 54% del cuadro
         const { center, distance } = adjustModelToFrame(model, camera, mount);
 
         // Configurar OrbitControls con el modelo centrado
@@ -171,6 +171,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
       console.log("Verificando soporte para AR...");
       if (!("xr" in navigator)) {
         onError("WebXR no soportado en este dispositivo.");
+        console.error("WebXR no soportado en este dispositivo.");
         return;
       }
 
@@ -188,34 +189,70 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
       console.log("AR es compatible:", isSupported);
       if (!isSupported) {
         onError("AR no es compatible en este dispositivo.");
+        console.error("AR no es compatible en este dispositivo.");
         return;
       }
 
       try {
+        console.log("Solicitando permisos de la cámara...");
+        // Solicitar permisos de la cámara explícitamente
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream.getTracks().forEach(track => track.stop()); // Detener el stream después de obtener permisos
+        console.log("Permisos de la cámara concedidos.");
+
         console.log("Iniciando sesión AR...");
         const renderer = rendererRef.current;
         const session = await navigator.xr.requestSession("immersive-ar", {
           requiredFeatures: ["local-floor"], // Espacio de referencia obligatorio
-          optionalFeatures: ["dom-overlay"], // Características opcionales
-          domOverlay: { root: document.body }, // Superposición de DOM para la interfaz
+          // optionalFeatures: ["dom-overlay"], // Desactivar dom-overlay para pruebas
+          // domOverlay: { root: document.body }, // Desactivar dom-overlay para pruebas
         });
 
+        // Forzar modo fullscreen para mejorar la experiencia AR
+        if (document.fullscreenEnabled && !document.fullscreenElement) {
+          console.log("Solicitando modo fullscreen...");
+          await document.body.requestFullscreen();
+          console.log("Modo fullscreen activado.");
+        }
+
         // Solicitar y configurar el ReferenceSpace
+        console.log("Solicitando espacio de referencia 'local-floor'...");
         const referenceSpace = await session.requestReferenceSpace("local-floor");
         renderer.xr.setReferenceSpace(referenceSpace);
+        console.log("Espacio de referencia configurado correctamente.");
 
-        // Posicionar el modelo en AR (a 1 metro frente al usuario)
+        // Posicionar el modelo en AR (a 1 metro frente al usuario, ligeramente más abajo)
         if (modelRef.current) {
-          modelRef.current.position.set(0, 0, -1); // Ajustar la posición inicial en AR
+          modelRef.current.position.set(0, -0.5, -1); // Ajustar la posición inicial en AR
+          console.log("Modelo posicionado en AR en:", modelRef.current.position);
+        } else {
+          console.warn("No se encontró modelo para posicionar en AR.");
         }
 
         arSessionRef.current = session;
         renderer.xr.setSession(session);
         console.log("AR iniciado correctamente");
 
+        // Añadir listener para depurar el estado de la sesión AR
+        session.onend = () => {
+          console.log("Sesión AR finalizada.");
+          arSessionRef.current = null;
+          if (controlsRef.current) {
+            controlsRef.current.enabled = true;
+          }
+          if (rendererRef.current) {
+            rendererRef.current.setAnimationLoop(renderLoop(controlsRef, rendererRef, sceneRef, cameraRef, arSessionRef));
+          }
+          if (document.fullscreenElement) {
+            document.exitFullscreen();
+            console.log("Modo fullscreen desactivado.");
+          }
+        };
+
         // Desactivar OrbitControls en modo AR
         if (controlsRef.current) {
           controlsRef.current.enabled = false;
+          console.log("OrbitControls desactivados en modo AR.");
         }
       } catch (err) {
         console.error("Error al iniciar AR: ", err);
@@ -235,12 +272,21 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
         // Reactivar OrbitControls después de finalizar AR
         if (controlsRef.current) {
           controlsRef.current.enabled = true;
+          console.log("OrbitControls reactivados después de finalizar AR.");
         }
 
         // Restauramos el render loop unificado para el modo no-AR
         if (rendererRef.current) {
           rendererRef.current.setAnimationLoop(renderLoop(controlsRef, rendererRef, sceneRef, cameraRef, arSessionRef));
         }
+
+        // Salir del modo fullscreen si está activo
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+          console.log("Modo fullscreen desactivado al finalizar AR.");
+        }
+      } else {
+        console.warn("No hay sesión AR activa para finalizar.");
       }
     },
   }));
