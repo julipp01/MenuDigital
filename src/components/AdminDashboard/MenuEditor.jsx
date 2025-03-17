@@ -194,30 +194,29 @@ const MenuEditor = ({ restaurantId }) => {
         toast.error("Plantilla no encontrada");
         return;
       }
-      setSelectedTemplate(template);
-      setColors(template.default_colors || { primary: "#FF9800", secondary: "#4CAF50" });
-      const newSections = template.fields || { "Platos Principales": [], Postres: [], Bebidas: [] };
-      setMenuSections(newSections);
-      setMenuItems(
-        Object.entries(newSections).flatMap(([category, items]) =>
-          items.map((item) => ({ ...item, category }))
-        )
-      );
+
+      // Construimos la solicitud con todos los datos requeridos
+      const dataToSend = {
+        template_id: template.id,
+        name: restaurantName || "Mi Restaurante",
+        colors: template.default_colors || { primary: "#FF9800", secondary: "#4CAF50" },
+        sections: menuSections || { "Platos Principales": [], Postres: [], Bebidas: [] },
+        logo: typeof logo === "string" ? logo : null,
+        plan_id: planId || null,
+      };
+
+      console.log("[MenuEditor] Datos enviados a PUT /restaurantes/:id:", dataToSend);
 
       try {
-        const dataToSend = {
-          template_id: template.id,
-          colors: template.default_colors,
-        };
-        console.log("[MenuEditor] Datos enviados a PUT /restaurantes/:id:", dataToSend);
-        await api.put(`/restaurantes/${restaurantId}`, dataToSend);
+        const response = await api.put(`/restaurantes/${restaurantId}`, dataToSend);
+        console.log("[MenuEditor] Respuesta del servidor:", response.data);
         toast.success("Plantilla actualizada con éxito");
       } catch (err) {
         console.error("[MenuEditor] Error al actualizar plantilla:", err.message, err.response?.data);
-        toast.error("Error al actualizar la plantilla");
+        toast.error(`Error al actualizar la plantilla: ${err.response?.data?.error || err.message}`);
       }
     },
-    [templates, restaurantId]
+    [templates, restaurantId, restaurantName, menuSections, colors, logo, planId]
   );
 
   useEffect(() => {
@@ -233,13 +232,13 @@ const MenuEditor = ({ restaurantId }) => {
   }, [fetchData, isConnected, socket]);
 
   const saveConfig = useCallback(
-    async () => {
+    async (overrideLogo = logo) => {
       try {
         const configData = {
           name: restaurantName,
           colors,
-          logo: typeof logo === "string" ? logo : null, // Asegurar que sea URL
-          sections: { ...menuSections }, // Evitar referencias a objetos React
+          logo: typeof overrideLogo === "string" ? overrideLogo : logo, // Asegurar que use la nueva URL
+          sections: { ...menuSections },
           plan_id: planId,
         };
 
@@ -323,8 +322,8 @@ const MenuEditor = ({ restaurantId }) => {
       const newLogoUrl = await uploadFile(file, `/restaurantes/${restaurantId}/upload-logo`, "logo");
       if (newLogoUrl) {
         console.log("[MenuEditor] Nueva URL del logo antes de guardar configuración:", newLogoUrl);
-        setLogo(newLogoUrl);
-        await saveConfig(newLogoUrl); // Asegurar que se pasa el nuevo logo a la configuración
+        setLogo(newLogoUrl);  // Actualiza el estado del logo
+        await saveConfig(newLogoUrl);  // Pasa la nueva URL a saveConfig
       }
     } catch (err) {
       console.error("[MenuEditor] Error al subir logo:", err.message);
