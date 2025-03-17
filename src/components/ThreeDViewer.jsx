@@ -17,6 +17,7 @@ const ThreeDViewer = forwardRef(
     const [isLoading, setIsLoading] = useState(true);
     const [progress, setProgress] = useState(0);
     const [loadFailed, setLoadFailed] = useState(false);
+    const [arError, setArError] = useState(false);
 
     useImperativeHandle(ref, () => ({
       startAR: () => {
@@ -24,11 +25,12 @@ const ThreeDViewer = forwardRef(
           try {
             console.log("Iniciando AR...");
             modelViewerRef.current.activateAR();
+            setArError(false);
           } catch (err) {
+            console.error("Error al activar AR:", err);
+            setArError(true);
             onError(`Error al iniciar AR: ${err.message}`);
           }
-        } else {
-          onError("El componente model-viewer no está inicializado.");
         }
       },
       endAR: () => {
@@ -40,25 +42,29 @@ const ThreeDViewer = forwardRef(
       const viewer = modelViewerRef.current;
       if (viewer) {
         const handleLoad = () => {
-          console.log(`Modelo cargado exitosamente: ${modelUrl} (iOS: ${iosModelUrl})`);
+          console.log(`Modelo cargado: ${modelUrl} (iOS: ${iosModelUrl})`);
           setIsLoading(false);
           setProgress(100);
           setLoadFailed(false);
           onLoad();
         };
-        const handleError = (error) => {
-          console.error(`Error al cargar ${modelUrl} (iOS: ${iosModelUrl}):`, error);
+        const handleError = (event) => {
+          console.error(`Error al cargar modelo: ${modelUrl}`, event.detail);
           setIsLoading(false);
           setLoadFailed(true);
-          onError("No se pudo cargar el modelo. Revisa tu conexión o intenta de nuevo.");
+          onError("No se pudo cargar el modelo. Revisa la conexión o intenta otro modelo.");
         };
         const handleProgress = (event) => {
           const progressValue = Math.round(event.detail.totalProgress * 100);
           setProgress(progressValue);
-          console.log(`Progreso de carga: ${progressValue}%`);
+          console.log(`Progreso: ${progressValue}%`);
         };
         const handleArStatus = (event) => {
           console.log("Estado de AR:", event.detail.status);
+          if (event.detail.status === "failed") {
+            setArError(true);
+            onError("No se pudo iniciar AR. Verifica la compatibilidad del dispositivo.");
+          }
         };
 
         viewer.addEventListener("load", handleLoad);
@@ -66,19 +72,20 @@ const ThreeDViewer = forwardRef(
         viewer.addEventListener("progress", handleProgress);
         viewer.addEventListener("ar-status", handleArStatus);
 
-        // Fallback: Solo disparar error si no hay progreso después de 15 segundos
+        // Fallback solo si no hay progreso inicial
         const fallbackTimeout = setTimeout(() => {
-          if (progress === 0) { // Solo si no ha comenzado a cargar
+          if (progress === 0) {
             setIsLoading(false);
             setLoadFailed(true);
-            onError("No se pudo iniciar la carga del modelo. Verifica tu conexión.");
+            onError("Tiempo de carga excedido. Verifica tu conexión.");
           }
         }, 15000);
 
-        // Reiniciar estado al cambiar modelo
+        // Reiniciar estados
         setIsLoading(true);
         setProgress(0);
         setLoadFailed(false);
+        setArError(false);
 
         return () => {
           viewer.removeEventListener("load", handleLoad);
@@ -103,6 +110,7 @@ const ThreeDViewer = forwardRef(
           scale={`${scale[0]} ${scale[1]} ${scale[2]}`}
           style={{ width: "100%", height: "100%", backgroundColor }}
         >
+          {/* Botón personalizado */}
           <button
             slot="ar-button"
             className="custom-ar-button absolute bottom-4 right-4 bg-orange-500 text-white px-4 py-2 rounded-full font-roboto text-sm shadow-md hover:bg-orange-600 transition-all duration-200"
@@ -114,7 +122,7 @@ const ThreeDViewer = forwardRef(
 
         {/* Indicador de progreso */}
         {isLoading && !loadFailed && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100/80 z-10 transition-opacity duration-500">
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-100/80 z-10 transition-opacity duration-500">
             <div className="w-3/4 max-w-xs">
               <div className="relative h-2 bg-gray-300 rounded-full overflow-hidden">
                 <div
@@ -129,12 +137,22 @@ const ThreeDViewer = forwardRef(
           </div>
         )}
 
-        {/* Mensaje de error si falla */}
+        {/* Mensaje de error si falla la carga del modelo */}
         {loadFailed && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100/80 z-10">
             <div className="text-center text-red-600 font-roboto">
               <p className="text-sm font-medium">Error al cargar el modelo</p>
               <p className="text-xs mt-1">Revisa tu conexión o intenta otro modelo.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Mensaje de error si falla AR */}
+        {arError && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-100/80 z-10">
+            <div className="text-center text-red-600 font-roboto">
+              <p className="text-sm font-medium">Error al iniciar AR</p>
+              <p className="text-xs mt-1">Verifica la compatibilidad de tu dispositivo.</p>
             </div>
           </div>
         )}

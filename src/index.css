@@ -1,8 +1,14 @@
-/* frontend/src/index.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Ocultar el botón predeterminado de AR en model-viewer */
+model-viewer::part(default-ar-button),
+model-viewer [slot="ar-button"]:not(.custom-ar-button) {
+  display: none !important;
+}
+
+/* Ocultar la barra de desplazamiento */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
@@ -11,6 +17,7 @@
   scrollbar-width: none;
 }
 
+/* Animación de fade-in */
 .animate-fade-in {
   animation: fadeIn 0.3s ease-in-out;
 }
@@ -23,11 +30,4 @@
     opacity: 1;
   }
 }
-/* Ocultar el botón predeterminado de AR en model-viewer */
-model-viewer::part(default-ar-button) {
-  display: none !important;
-}
 
-model-viewer [slot="ar-button"]:not(.custom-ar-button) {
-  display: none !important;
-}
