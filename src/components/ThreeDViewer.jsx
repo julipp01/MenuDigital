@@ -40,6 +40,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
       rendererRef.current = renderer;
       renderer.setSize(mount.clientWidth, mount.clientHeight);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.xr.enabled = true;
       mount.appendChild(renderer.domElement);
     } catch (e) {
       onError("Error al inicializar WebGL: " + e.message);
@@ -61,6 +62,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
         const model = gltf.scene;
         modelRef.current = model;
         model.scale.set(...scale);
+        model.position.set(0, 0, -1); // Ajustar posición inicial en AR
         scene.add(model);
         onLoad();
         console.log("Modelo cargado exitosamente");
@@ -112,9 +114,6 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
 
       try {
         const renderer = rendererRef.current;
-        renderer.xr.enabled = true;
-        renderer.xr.setReferenceSpaceType("local-floor");
-
         const session = await navigator.xr.requestSession("immersive-ar", {
           requiredFeatures: ["local-floor"],
           optionalFeatures: ["dom-overlay"],
@@ -123,8 +122,6 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
 
         arSessionRef.current = session;
         renderer.xr.setSession(session);
-        if (controlsRef.current) controlsRef.current.enabled = false;
-
         console.log("AR iniciado correctamente.");
       } catch (err) {
         onError(`No se pudo iniciar AR: ${err.message}`);
@@ -143,4 +140,5 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
 });
 
 export default ThreeDViewer;
+
 
