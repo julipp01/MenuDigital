@@ -42,7 +42,6 @@ const defaultModel = {
   price: "N/A",
 };
 
-// Variantes de animación
 const buttonVariants = {
   initial: { opacity: 0, y: 15 },
   animate: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },

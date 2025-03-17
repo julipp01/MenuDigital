@@ -18,6 +18,7 @@ const ThreeDViewer = forwardRef(
     const [progress, setProgress] = useState(0);
     const [loadFailed, setLoadFailed] = useState(false);
     const [arError, setArError] = useState(false);
+    const timeoutRef = useRef(null); // Para manejar el timeout
 
     useImperativeHandle(ref, () => ({
       startAR: () => {
@@ -43,6 +44,7 @@ const ThreeDViewer = forwardRef(
       if (viewer) {
         const handleLoad = () => {
           console.log(`Modelo cargado: ${modelUrl} (iOS: ${iosModelUrl})`);
+          clearTimeout(timeoutRef.current); // Cancelar el timeout
           setIsLoading(false);
           setProgress(100);
           setLoadFailed(false);
@@ -50,6 +52,7 @@ const ThreeDViewer = forwardRef(
         };
         const handleError = (event) => {
           console.error(`Error al cargar modelo: ${modelUrl}`, event.detail);
+          clearTimeout(timeoutRef.current); // Cancelar el timeout
           setIsLoading(false);
           setLoadFailed(true);
           onError("No se pudo cargar el modelo. Revisa la conexión o intenta otro modelo.");
@@ -73,7 +76,7 @@ const ThreeDViewer = forwardRef(
         viewer.addEventListener("ar-status", handleArStatus);
 
         // Fallback solo si no hay progreso inicial
-        const fallbackTimeout = setTimeout(() => {
+        timeoutRef.current = setTimeout(() => {
           if (progress === 0) {
             setIsLoading(false);
             setLoadFailed(true);
@@ -92,7 +95,7 @@ const ThreeDViewer = forwardRef(
           viewer.removeEventListener("error", handleError);
           viewer.removeEventListener("progress", handleProgress);
           viewer.removeEventListener("ar-status", handleArStatus);
-          clearTimeout(fallbackTimeout);
+          clearTimeout(timeoutRef.current);
         };
       }
     }, [modelUrl, iosModelUrl, onLoad, onError]);
@@ -110,7 +113,6 @@ const ThreeDViewer = forwardRef(
           scale={`${scale[0]} ${scale[1]} ${scale[2]}`}
           style={{ width: "100%", height: "100%", backgroundColor }}
         >
-          {/* Botón personalizado */}
           <button
             slot="ar-button"
             className="custom-ar-button absolute bottom-4 right-4 bg-orange-500 text-white px-4 py-2 rounded-full font-roboto text-sm shadow-md hover:bg-orange-600 transition-all duration-200"
@@ -120,7 +122,6 @@ const ThreeDViewer = forwardRef(
           </button>
         </model-viewer>
 
-        {/* Indicador de progreso */}
         {isLoading && !loadFailed && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100/80 z-10 transition-opacity duration-500">
             <div className="w-3/4 max-w-xs">
@@ -137,7 +138,6 @@ const ThreeDViewer = forwardRef(
           </div>
         )}
 
-        {/* Mensaje de error si falla la carga del modelo */}
         {loadFailed && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100/80 z-10">
             <div className="text-center text-red-600 font-roboto">
@@ -147,7 +147,6 @@ const ThreeDViewer = forwardRef(
           </div>
         )}
 
-        {/* Mensaje de error si falla AR */}
         {arError && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100/80 z-10">
             <div className="text-center text-red-600 font-roboto">

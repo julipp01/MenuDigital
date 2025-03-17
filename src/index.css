@@ -6,15 +6,17 @@
 model-viewer::part(default-ar-button),
 model-viewer [slot="ar-button"]:not(.custom-ar-button) {
   display: none !important;
+  visibility: hidden !important; /* Doble capa de ocultación */
 }
 
 /* Ocultar la barra de desplazamiento */
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
 .scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+  -ms-overflow-style: none; /* IE y Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari y Opera */
 }
 
 /* Animación de fade-in */
@@ -23,11 +25,15 @@ model-viewer [slot="ar-button"]:not(.custom-ar-button) {
 }
 
 @keyframes fadeIn {
-  from {
+  0% {
     opacity: 0;
   }
-  to {
+  100% {
     opacity: 1;
   }
 }
 
+/* Estilo adicional para model-viewer */
+model-viewer {
+  --ar-button: none; /* Intento adicional de ocultar el botón predeterminado */
+}
