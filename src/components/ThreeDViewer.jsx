@@ -26,7 +26,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
 
     const mount = mountRef.current;
     const camera = new THREE.PerspectiveCamera(75, mount.clientWidth / mount.clientHeight, 0.1, 1000);
-    camera.position.set(0, 0, 5);
+    camera.position.set(0, 1, 2);
     cameraRef.current = camera;
 
     let renderer;
@@ -35,6 +35,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
       rendererRef.current = renderer;
       renderer.setSize(mount.clientWidth, mount.clientHeight);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.xr.enabled = true;
       mount.appendChild(renderer.domElement);
     } catch (e) {
       onError("Error al inicializar WebGL: " + e.message);
@@ -57,6 +58,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
         const model = gltf.scene;
         modelRef.current = model;
         model.scale.set(...scale);
+        model.position.set(0, 0, 0);
         scene.add(model);
         onLoad();
       },
@@ -67,6 +69,9 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
     // Controles
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+    controls.enableRotate = true;
+    controls.enableZoom = true;
+    controls.enablePan = true;
     controlsRef.current = controls;
 
     // Animación
@@ -94,18 +99,21 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
 
       try {
         const renderer = rendererRef.current;
-        renderer.xr.enabled = true;
         const session = await navigator.xr.requestSession("immersive-ar", {
           requiredFeatures: ["local-floor"],
+          optionalFeatures: ["dom-overlay"],
+          domOverlay: { root: document.body },
         });
 
         arSessionRef.current = session;
         renderer.xr.setSession(session);
+        console.log("AR iniciado correctamente");
       } catch (err) {
         onError(`No se pudo iniciar AR: ${err.message}`);
       }
     },
     endAR: () => {
+      console.log("Finalizando AR...");
       if (arSessionRef.current) {
         arSessionRef.current.end();
         arSessionRef.current = null;
@@ -117,6 +125,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
 });
 
 export default ThreeDViewer;
+
 
 
 
