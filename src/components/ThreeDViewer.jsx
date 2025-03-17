@@ -36,6 +36,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
       renderer.setSize(mount.clientWidth, mount.clientHeight);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.xr.enabled = true;
+      renderer.xr.setReferenceSpaceType("local-floor");
       mount.appendChild(renderer.domElement);
     } catch (e) {
       onError("Error al inicializar WebGL: " + e.message);
@@ -92,12 +93,20 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
 
   useImperativeHandle(ref, () => ({
     startAR: async () => {
+      console.log("Verificando soporte para AR...");
       if (!("xr" in navigator)) {
         onError("WebXR no soportado en este dispositivo.");
         return;
       }
 
+      const isSupported = await navigator.xr.isSessionSupported("immersive-ar");
+      if (!isSupported) {
+        onError("AR no es compatible en este dispositivo.");
+        return;
+      }
+
       try {
+        console.log("Iniciando sesión AR...");
         const renderer = rendererRef.current;
         const session = await navigator.xr.requestSession("immersive-ar", {
           requiredFeatures: ["local-floor"],
@@ -125,6 +134,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
 });
 
 export default ThreeDViewer;
+
 
 
 
