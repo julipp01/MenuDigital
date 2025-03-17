@@ -322,9 +322,9 @@ const MenuEditor = ({ restaurantId }) => {
     try {
       const newLogoUrl = await uploadFile(file, `/restaurantes/${restaurantId}/upload-logo`, "logo");
       if (newLogoUrl) {
-        console.log("[MenuEditor] Nueva URL del logo:", newLogoUrl);
+        console.log("[MenuEditor] Nueva URL del logo antes de guardar configuración:", newLogoUrl);
         setLogo(newLogoUrl);
-        await saveConfig();
+        await saveConfig(newLogoUrl); // Asegurar que se pasa el nuevo logo a la configuración
       }
     } catch (err) {
       console.error("[MenuEditor] Error al subir logo:", err.message);
