@@ -237,7 +237,7 @@ const MenuEditor = ({ restaurantId }) => {
         const configData = {
           name: restaurantName,
           colors,
-          logo: typeof overrideLogo === "string" ? overrideLogo : logo, // Asegurar que use la nueva URL
+          logo: overrideLogo || logo, // Asegurar que use la nueva URL
           sections: { ...menuSections },
           plan_id: planId,
         };
@@ -321,9 +321,9 @@ const MenuEditor = ({ restaurantId }) => {
     try {
       const newLogoUrl = await uploadFile(file, `/restaurantes/${restaurantId}/upload-logo`, "logo");
       if (newLogoUrl) {
-        console.log("[MenuEditor] Nueva URL del logo antes de guardar configuración:", newLogoUrl);
+        console.log("[MenuEditor] Nueva URL del logo antes de actualizar estado:", newLogoUrl);
         setLogo(newLogoUrl);  // Actualiza el estado del logo
-        await saveConfig(newLogoUrl);  // Pasa la nueva URL a saveConfig
+        setTimeout(() => saveConfig(newLogoUrl), 500); // Esperar un poco antes de guardar configuración
       }
     } catch (err) {
       console.error("[MenuEditor] Error al subir logo:", err.message);
