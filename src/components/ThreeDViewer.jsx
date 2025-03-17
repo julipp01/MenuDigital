@@ -3,33 +3,42 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1], backgroundColor = "#ffffff", onLoad = () => {}, onError = () => {}, }, ref) => {
+// Render loop único para usar en el renderer.setAnimationLoop
+const renderLoop = (controlsRef, rendererRef, sceneRef, cameraRef, arSessionRef) => {
+  return () => {
+    if (!arSessionRef.current && controlsRef.current) {
+      controlsRef.current.update();
+    }
+    rendererRef.current.render(sceneRef.current, cameraRef.current);
+  };
+};
+
+const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor = "#ffffff", onLoad = () => {}, onError = () => {} }, ref) => {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
   const rendererRef = useRef(null);
   const controlsRef = useRef(null);
   const modelRef = useRef(null);
-  const animationFrameId = useRef(null);
   const arSessionRef = useRef(null);
-
+  
   useEffect(() => {
     console.log("Inicializando Three.js...");
     if (!modelUrl) {
       onError("No se proporcionó URL del modelo");
       return;
     }
-
-    // Configuración de la escena
+  
+    // Creación de la escena (se crea solo una vez)
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(backgroundColor);
     sceneRef.current = scene;
-
+  
     const mount = mountRef.current;
     const camera = new THREE.PerspectiveCamera(75, mount.clientWidth / mount.clientHeight, 0.1, 1000);
     camera.position.set(0, 1, 2);
     cameraRef.current = camera;
-
+  
     let renderer;
     if (!rendererRef.current) {
       try {
@@ -38,6 +47,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
         renderer.setSize(mount.clientWidth, mount.clientHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.xr.enabled = true;
+        renderer.xr.setReferenceSpaceType("local-floor");
         mount.appendChild(renderer.domElement);
         console.log("Renderer WebGL inicializado correctamente");
       } catch (e) {
@@ -47,7 +57,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
     } else {
       renderer = rendererRef.current;
     }
-
+  
     // Iluminación
     console.log("Configurando iluminación...");
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
@@ -55,7 +65,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(5, 5, 5);
     scene.add(directionalLight);
-
+  
     // Carga del modelo
     console.log("Cargando modelo: ", modelUrl);
     const loader = new GLTFLoader();
@@ -66,7 +76,8 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
         const model = gltf.scene;
         modelRef.current = model;
         model.scale.set(...scale);
-        model.position.set(0, 0, -1); // Ajustar posición para AR
+        // Se posiciona ligeramente hacia adelante para que sea visible en AR
+        model.position.set(0, 0, -1);
         scene.add(model);
         console.log("Modelo cargado exitosamente");
         onLoad();
@@ -74,27 +85,23 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
       undefined,
       (error) => onError("No se pudo cargar el modelo: " + error.message)
     );
-
-    // Controles
+  
+    // Configuración de OrbitControls para manipulación suave
     console.log("Inicializando controles de órbita...");
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.enableRotate = true;
     controls.enableZoom = true;
     controls.enablePan = true;
+    controls.minDistance = 1;
+    controls.maxDistance = 10;
+    controls.target.set(0, 0, 0);
+    controls.update();
     controlsRef.current = controls;
-
-    // Animación con soporte para WebXR
-    const animate = () => {
-      animationFrameId.current = renderer.setAnimationLoop(() => {
-        if (!arSessionRef.current) {
-          controlsRef.current.update();
-        }
-        renderer.render(scene, camera);
-      });
-    };
-    animate();
-
+  
+    // Se establece el render loop unificado
+    renderer.setAnimationLoop(renderLoop(controlsRef, rendererRef, sceneRef, cameraRef, arSessionRef));
+  
     return () => {
       console.log("Liberando recursos...");
       if (rendererRef.current) {
@@ -103,14 +110,20 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
         rendererRef.current.forceContextLoss(); // Liberar contexto WebGL
         rendererRef.current = null;
       }
-      cancelAnimationFrame(animationFrameId.current);
-      if (arSessionRef.current) arSessionRef.current.end();
+      if (arSessionRef.current) {
+        try {
+          arSessionRef.current.end();
+        } catch (e) {
+          console.warn("Error al finalizar AR durante la liberación de recursos:", e);
+        }
+        arSessionRef.current = null;
+      }
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);
       }
     };
-  }, [modelUrl, enableAr, scale, backgroundColor, onLoad, onError]);
-
+  }, [modelUrl, scale, backgroundColor, onLoad, onError]);
+  
   useImperativeHandle(ref, () => ({
     startAR: async () => {
       console.log("Verificando soporte para AR...");
@@ -118,37 +131,41 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
         onError("WebXR no soportado en este dispositivo.");
         return;
       }
-
+  
       if (arSessionRef.current) {
         console.warn("Una sesión AR ya está activa, finalizándola antes de iniciar una nueva.");
-        await arSessionRef.current.end();
+        try {
+          await arSessionRef.current.end();
+        } catch (e) {
+          console.warn("Error al finalizar AR en startAR:", e);
+        }
         arSessionRef.current = null;
       }
-
+  
       const isSupported = await navigator.xr.isSessionSupported("immersive-ar");
       console.log("AR es compatible:", isSupported);
       if (!isSupported) {
         onError("AR no es compatible en este dispositivo.");
         return;
       }
-
+  
       try {
         console.log("Iniciando sesión AR...");
+        // Opcional: solicitar fullscreen para evitar que se vaya al hero
+        // if (document.fullscreenEnabled && !document.fullscreenElement) {\n        //   await document.body.requestFullscreen();\n        // }
         const renderer = rendererRef.current;
         const session = await navigator.xr.requestSession("immersive-ar", {
           requiredFeatures: ["local-floor"],
           optionalFeatures: ["dom-overlay"],
           domOverlay: { root: document.body },
         });
-
+  
+        // Solicitar y configurar el ReferenceSpace
         const referenceSpace = await session.requestReferenceSpace("local-floor");
         renderer.xr.setReferenceSpace(referenceSpace);
-
+  
         arSessionRef.current = session;
         renderer.xr.setSession(session);
-        session.requestAnimationFrame(() => {
-          renderer.render(sceneRef.current, cameraRef.current);
-        });
         console.log("AR iniciado correctamente");
       } catch (err) {
         console.error("Error al iniciar AR: ", err);
@@ -158,17 +175,25 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
     endAR: () => {
       console.log("Finalizando AR...");
       if (arSessionRef.current) {
-        arSessionRef.current.end();
+        try {
+          arSessionRef.current.end();
+        } catch (e) {
+          console.warn("Error al finalizar AR (puede que la sesión ya haya terminado):", e);
+        }
         arSessionRef.current = null;
-        rendererRef.current.setAnimationLoop(null);
+        // Restauramos el render loop unificado para el modo no-AR
+        if (rendererRef.current) {
+          rendererRef.current.setAnimationLoop(renderLoop(controlsRef, rendererRef, sceneRef, cameraRef, arSessionRef));
+        }
       }
     },
   }));
-
+  
   return <div ref={mountRef} style={{ width: "100%", height: "100%" }} />;
 });
-
+  
 export default ThreeDViewer;
+
 
 
 
