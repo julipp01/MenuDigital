@@ -18,7 +18,7 @@ const ThreeDViewer = forwardRef(
     const [progress, setProgress] = useState(0);
     const [loadFailed, setLoadFailed] = useState(false);
     const [arError, setArError] = useState(false);
-    const timeoutRef = useRef(null); // Para manejar el timeout
+    const timeoutRef = useRef(null);
 
     useImperativeHandle(ref, () => ({
       startAR: () => {
@@ -37,6 +37,15 @@ const ThreeDViewer = forwardRef(
       endAR: () => {
         console.log("Finalizando AR...");
       },
+      resetModel: () => {
+        if (modelViewerRef.current) {
+          modelViewerRef.current.reset();
+          setIsLoading(true);
+          setProgress(0);
+          setLoadFailed(false);
+          setArError(false);
+        }
+      },
     }));
 
     useEffect(() => {
@@ -44,7 +53,7 @@ const ThreeDViewer = forwardRef(
       if (viewer) {
         const handleLoad = () => {
           console.log(`Modelo cargado: ${modelUrl} (iOS: ${iosModelUrl})`);
-          clearTimeout(timeoutRef.current); // Cancelar el timeout
+          clearTimeout(timeoutRef.current);
           setIsLoading(false);
           setProgress(100);
           setLoadFailed(false);
@@ -52,7 +61,7 @@ const ThreeDViewer = forwardRef(
         };
         const handleError = (event) => {
           console.error(`Error al cargar modelo: ${modelUrl}`, event.detail);
-          clearTimeout(timeoutRef.current); // Cancelar el timeout
+          clearTimeout(timeoutRef.current);
           setIsLoading(false);
           setLoadFailed(true);
           onError("No se pudo cargar el modelo. Revisa la conexión o intenta otro modelo.");
@@ -75,7 +84,6 @@ const ThreeDViewer = forwardRef(
         viewer.addEventListener("progress", handleProgress);
         viewer.addEventListener("ar-status", handleArStatus);
 
-        // Fallback solo si no hay progreso inicial
         timeoutRef.current = setTimeout(() => {
           if (progress === 0) {
             setIsLoading(false);
@@ -84,7 +92,6 @@ const ThreeDViewer = forwardRef(
           }
         }, 15000);
 
-        // Reiniciar estados
         setIsLoading(true);
         setProgress(0);
         setLoadFailed(false);
@@ -111,15 +118,11 @@ const ThreeDViewer = forwardRef(
           camera-controls
           auto-rotate={autoRotate ? "true" : undefined}
           scale={`${scale[0]} ${scale[1]} ${scale[2]}`}
+          min-scale="0.1 0.1 0.1" // Limitar escala mínima
+          max-scale="10 10 10" // Limitar escala máxima
           style={{ width: "100%", height: "100%", backgroundColor }}
         >
-          <button
-            slot="ar-button"
-            className="custom-ar-button absolute bottom-4 right-4 bg-orange-500 text-white px-4 py-2 rounded-full font-roboto text-sm shadow-md hover:bg-orange-600 transition-all duration-200"
-            onClick={() => modelViewerRef.current?.activateAR()}
-          >
-            Ver en AR
-          </button>
+          {/* Botón eliminado del slot para usar solo el superior */}
         </model-viewer>
 
         {isLoading && !loadFailed && (

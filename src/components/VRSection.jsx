@@ -93,6 +93,7 @@ const VRSection = memo(() => {
       setSelectedModel(model);
     }
     setIsArMode(false);
+    if (viewerRef.current) viewerRef.current.resetModel(); // Reiniciar modelo al cambiar
   }, []);
 
   const handleToggleAr = useCallback((e) => {
