@@ -75,15 +75,19 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
     controls.enablePan = true;
     controlsRef.current = controls;
 
-    // Animación
+    // Animación con soporte para WebXR
     const animate = () => {
-      animationFrameId.current = requestAnimationFrame(animate);
-      controlsRef.current.update();
-      renderer.render(scene, camera);
+      animationFrameId.current = renderer.setAnimationLoop(() => {
+        if (!arSessionRef.current) {
+          controlsRef.current.update();
+        }
+        renderer.render(scene, camera);
+      });
     };
     animate();
 
     return () => {
+      renderer.setAnimationLoop(null);
       cancelAnimationFrame(animationFrameId.current);
       if (arSessionRef.current) arSessionRef.current.end();
       mount.removeChild(renderer.domElement);
@@ -116,6 +120,9 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
 
         arSessionRef.current = session;
         renderer.xr.setSession(session);
+        renderer.setAnimationLoop(() => {
+          renderer.render(sceneRef.current, cameraRef.current);
+        });
         console.log("AR iniciado correctamente");
       } catch (err) {
         onError(`No se pudo iniciar AR: ${err.message}`);
@@ -126,6 +133,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
       if (arSessionRef.current) {
         arSessionRef.current.end();
         arSessionRef.current = null;
+        rendererRef.current.setAnimationLoop(null);
       }
     },
   }));
@@ -134,6 +142,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1]
 });
 
 export default ThreeDViewer;
+
 
 
 
