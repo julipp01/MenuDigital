@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor = "#ffffff", onLoad = () => {}, onError = () => {} }, ref) => {
+const ThreeDViewer = forwardRef(({ modelUrl, enableAr = false, scale = [1, 1, 1], backgroundColor = "#ffffff", onLoad = () => {}, onError = () => {}, }, ref) => {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -15,13 +15,12 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
 
   useEffect(() => {
     console.log("Inicializando Three.js...");
-
     if (!modelUrl) {
       onError("No se proporcionó URL del modelo");
       return;
     }
 
-    // Configuración de la escena (se crea solo una vez, no depende de enableAr)
+    // Configuración de la escena
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(backgroundColor);
     sceneRef.current = scene;
@@ -39,7 +38,6 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
         renderer.setSize(mount.clientWidth, mount.clientHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.xr.enabled = true;
-        renderer.xr.setReferenceSpaceType("local-floor");
         mount.appendChild(renderer.domElement);
         console.log("Renderer WebGL inicializado correctamente");
       } catch (e) {
@@ -68,8 +66,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
         const model = gltf.scene;
         modelRef.current = model;
         model.scale.set(...scale);
-        // Colocamos el modelo ligeramente hacia adelante para AR
-        model.position.set(0, 0, -1);
+        model.position.set(0, 0, -1); // Ajustar posición para AR
         scene.add(model);
         console.log("Modelo cargado exitosamente");
         onLoad();
@@ -78,7 +75,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
       (error) => onError("No se pudo cargar el modelo: " + error.message)
     );
 
-    // Controles de órbita para modo no-AR
+    // Controles
     console.log("Inicializando controles de órbita...");
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -87,7 +84,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
     controls.enablePan = true;
     controlsRef.current = controls;
 
-    // Animación con soporte para WebXR: se usa setAnimationLoop para sincronizar con XRSession
+    // Animación con soporte para WebXR
     const animate = () => {
       animationFrameId.current = renderer.setAnimationLoop(() => {
         if (!arSessionRef.current) {
@@ -98,7 +95,6 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
     };
     animate();
 
-    // No incluimos 'enableAr' en el array de dependencias para evitar reinicializar la escena
     return () => {
       console.log("Liberando recursos...");
       if (rendererRef.current) {
@@ -113,7 +109,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
         mount.removeChild(renderer.domElement);
       }
     };
-  }, [modelUrl, scale, backgroundColor, onLoad, onError]); // enableAr se ha eliminado de las dependencias
+  }, [modelUrl, enableAr, scale, backgroundColor, onLoad, onError]);
 
   useImperativeHandle(ref, () => ({
     startAR: async () => {
@@ -145,13 +141,11 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
           domOverlay: { root: document.body },
         });
 
-        // Solicitar reference space para que el renderizado se sincronice correctamente
         const referenceSpace = await session.requestReferenceSpace("local-floor");
         renderer.xr.setReferenceSpace(referenceSpace);
 
         arSessionRef.current = session;
         renderer.xr.setSession(session);
-        // Se usa requestAnimationFrame del XRSession para renderizar cada frame
         session.requestAnimationFrame(() => {
           renderer.render(sceneRef.current, cameraRef.current);
         });
@@ -164,19 +158,9 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
     endAR: () => {
       console.log("Finalizando AR...");
       if (arSessionRef.current) {
-        try {
-          arSessionRef.current.end();
-        } catch (e) {
-          console.warn("Error al finalizar AR (puede que la sesión ya haya terminado):", e);
-        }
+        arSessionRef.current.end();
         arSessionRef.current = null;
-        if (rendererRef.current) {
-          rendererRef.current.setAnimationLoop(() => {
-            // Al finalizar AR, restauramos el render loop normal
-            controlsRef.current.update();
-            rendererRef.current.render(sceneRef.current, cameraRef.current);
-          });
-        }
+        rendererRef.current.setAnimationLoop(null);
       }
     },
   }));
@@ -185,6 +169,7 @@ const ThreeDViewer = forwardRef(({ modelUrl, scale = [1, 1, 1], backgroundColor 
 });
 
 export default ThreeDViewer;
+
 
 
 
