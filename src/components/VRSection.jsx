@@ -33,7 +33,6 @@ const models = [
   },
 ];
 
-// Modelo por defecto
 const defaultModel = {
   name: "Modelo por Defecto",
   url: "/models/default.glb",
@@ -73,7 +72,6 @@ const VRSection = memo(() => {
   const [selectedModel, setSelectedModel] = useState(models[0] || defaultModel);
   const [isArMode, setIsArMode] = useState(false);
   const [isArSupported, setIsArSupported] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const viewerRef = useRef(null);
 
@@ -85,8 +83,6 @@ const VRSection = memo(() => {
       } catch (err) {
         console.error("Error al verificar soporte AR:", err);
         setIsArSupported(false);
-      } finally {
-        setLoading(false);
       }
     };
     checkArSupport();
@@ -100,7 +96,6 @@ const VRSection = memo(() => {
       setSelectedModel(model);
     }
     setIsArMode(false);
-    setLoading(true);
     setError(null);
   }, []);
 
@@ -167,14 +162,6 @@ const VRSection = memo(() => {
             animate="animate"
             className="relative h-[70vh] bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200"
           >
-            {loading && (
-              <div className="absolute inset-0 flex items-center justify-center text-gray-600 bg-gray-100/70 z-10">
-                <svg className="animate-spin h-10 w-10 text-orange-500" viewBox="0 0 24 24" aria-hidden="true">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                </svg>
-              </div>
-            )}
             {error && (
               <div className="absolute inset-0 flex items-center justify-center text-red-600 bg-gray-100/70 z-10">
                 <p className="text-sm font-medium font-['Roboto'] text-center">{error}</p>
@@ -187,11 +174,8 @@ const VRSection = memo(() => {
               iosModelUrl={selectedModel.iosUrl}
               scale={selectedModel.scale}
               backgroundColor="#ffffff"
-              onLoad={() => setLoading(false)}
-              onError={(err) => {
-                setLoading(false);
-                setError(err);
-              }}
+              onLoad={() => console.log("Modelo listo en VRSection")}
+              onError={(err) => setError(err)}
             />
             <div className="absolute top-4 left-4 flex gap-3 z-20">
               <motion.button
@@ -202,7 +186,6 @@ const VRSection = memo(() => {
               >
                 Reiniciar
               </motion.button>
-              {/* Botón externo opcional, puedes eliminarlo si prefieres solo el botón del slot */}
               {isArSupported && (
                 <motion.button
                   onClick={handleToggleAr}
