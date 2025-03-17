@@ -2,7 +2,6 @@ import React, { useState, useCallback, useEffect, useRef, memo } from "react";
 import { motion } from "framer-motion";
 import ThreeDViewer from "./ThreeDViewer";
 
-// Lista estática de modelos
 const models = [
   {
     name: "Platillo 1",
@@ -72,7 +71,6 @@ const VRSection = memo(() => {
   const [selectedModel, setSelectedModel] = useState(models[0] || defaultModel);
   const [isArMode, setIsArMode] = useState(false);
   const [isArSupported, setIsArSupported] = useState(false);
-  const [error, setError] = useState(null);
   const viewerRef = useRef(null);
 
   useEffect(() => {
@@ -96,7 +94,6 @@ const VRSection = memo(() => {
       setSelectedModel(model);
     }
     setIsArMode(false);
-    setError(null);
   }, []);
 
   const handleToggleAr = useCallback((e) => {
@@ -136,8 +133,8 @@ const VRSection = memo(() => {
         onError={(e) => (e.target.src = "/thumbnails/placeholder.jpg")}
       />
       <div className="p-2 text-center">
-        <p className="text-xs font-semibold text-gray-800 font-['Roboto'] truncate">{model.name}</p>
-        <p className="text-xs text-gray-600 font-['Roboto']">{model.price}</p>
+        <p className="text-xs font-semibold text-gray-800 font-poppins truncate">{model.name}</p>
+        <p className="text-xs text-gray-600 font-roboto">{model.price}</p>
       </div>
     </motion.button>
   ));
@@ -146,7 +143,7 @@ const VRSection = memo(() => {
     return (
       <section id="3d" className="py-16 bg-gray-50 min-h-screen flex items-center justify-center">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-red-600">
-          <p>Error: No se pudo cargar el modelo seleccionado.</p>
+          <p className="font-roboto">Error: No se pudo cargar el modelo seleccionado.</p>
         </div>
       </section>
     );
@@ -162,11 +159,6 @@ const VRSection = memo(() => {
             animate="animate"
             className="relative h-[70vh] bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200"
           >
-            {error && (
-              <div className="absolute inset-0 flex items-center justify-center text-red-600 bg-gray-100/70 z-10">
-                <p className="text-sm font-medium font-['Roboto'] text-center">{error}</p>
-              </div>
-            )}
             <ThreeDViewer
               key={selectedModel.url}
               ref={viewerRef}
@@ -175,12 +167,12 @@ const VRSection = memo(() => {
               scale={selectedModel.scale}
               backgroundColor="#ffffff"
               onLoad={() => console.log("Modelo listo en VRSection")}
-              onError={(err) => setError(err)}
+              onError={(err) => console.error("Error desde VRSection:", err)}
             />
             <div className="absolute top-4 left-4 flex gap-3 z-20">
               <motion.button
                 onClick={() => handleSelectModel(selectedModel)}
-                className="bg-white text-orange-600 px-4 py-2 rounded-full hover:bg-orange-50 border border-orange-200 font-['Roboto'] text-sm shadow-md transition-all duration-200"
+                className="bg-white text-orange-600 px-4 py-2 rounded-full hover:bg-orange-50 border border-orange-200 font-roboto text-sm shadow-md transition-all duration-200"
                 whileHover={{ scale: 1.05 }}
                 aria-label="Reiniciar vista del modelo"
               >
@@ -191,7 +183,7 @@ const VRSection = memo(() => {
                   onClick={handleToggleAr}
                   className={`${
                     isArMode ? "bg-red-500 hover:bg-red-600" : "bg-orange-500 hover:bg-orange-600"
-                  } text-white px-4 py-2 rounded-full font-['Roboto'] text-sm shadow-md transition-all duration-200`}
+                  } text-white px-4 py-2 rounded-full font-roboto text-sm shadow-md transition-all duration-200`}
                   whileHover={{ scale: 1.05 }}
                   aria-label={isArMode ? "Salir de AR" : "Ver en AR"}
                 >
@@ -199,7 +191,7 @@ const VRSection = memo(() => {
                 </motion.button>
               )}
             </div>
-            <div className="absolute bottom-4 left-4 text-xs text-gray-700 font-['Roboto'] bg-white/90 p-2 rounded-lg shadow-md z-20">
+            <div className="absolute bottom-4 left-4 text-xs text-gray-700 font-roboto bg-white/90 p-2 rounded-lg shadow-md z-20">
               <p>© Izquierda + arrastrar: Rotar</p>
               <p>© Rueda: Zoom</p>
               <p>© Derecha + arrastrar: Mover</p>
@@ -224,14 +216,14 @@ const VRSection = memo(() => {
         >
           <div className="text-center lg:text-left">
             <motion.h2
-              className="text-4xl font-extrabold text-gray-900 font-['Roboto'] cursor-pointer"
+              className="text-4xl font-extrabold text-gray-900 font-poppins cursor-pointer"
               variants={textVariants}
               whileHover="hover"
             >
               Explora en 3D y AR
             </motion.h2>
             <motion.p
-              className="text-lg text-gray-600 font-['Roboto'] mt-3 cursor-pointer"
+              className="text-lg text-gray-600 font-roboto mt-3 cursor-pointer"
               variants={textVariants}
               whileHover="hover"
             >
@@ -246,7 +238,7 @@ const VRSection = memo(() => {
             whileHover="hover"
           >
             <motion.p
-              className="text-lg font-semibold text-gray-800 font-['Roboto'] mb-4 cursor-pointer text-center"
+              className="text-lg font-semibold text-gray-800 font-roboto mb-4 cursor-pointer text-center"
               variants={textVariants}
               whileHover="hover"
             >
