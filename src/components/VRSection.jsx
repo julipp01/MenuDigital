@@ -1,75 +1,50 @@
 import React, { useState, useCallback, useEffect, useRef, memo } from "react";
 import { motion } from "framer-motion";
 import ThreeDViewer from "./ThreeDViewer";
+import { MdRefresh, MdViewInAr } from "react-icons/md";
+import { Swiper, SwiperSlide } from "swiper/react";
+import "swiper/css";
+import "swiper/css/navigation";
+import { Navigation } from "swiper/modules";
 
 const models = [
-  {
-    name: "Platillo 1",
-    url: "/models/example.glb",
-    iosUrl: "/models/example.usdz",
-    thumbnail: "/thumbnails/example.jpg",
-    scale: [1, 1, 1],
-    description: "Un delicioso platillo principal con sabores únicos.",
-    price: "S/. 45",
-  },
-  {
-    name: "Platillo 2",
-    url: "/models/dish2.glb",
-    iosUrl: "/models/dish2.usdz",
-    thumbnail: "/thumbnails/dish2.jpg",
-    scale: [1, 1, 1],
-    description: "Postre exquisito y único para los amantes del dulce.",
-    price: "S/. 25",
-  },
-  {
-    name: "Platillo 3",
-    url: "/models/dish3.glb",
-    iosUrl: "/models/dish3.usdz",
-    thumbnail: "/thumbnails/dish3.jpg",
-    scale: [1, 1, 1],
-    description: "Bebida refrescante con un toque especial.",
-    price: "S/. 15",
-  },
+  { name: "Platillo 1", url: "/models/example.glb", iosUrl: "/models/example.usdz", thumbnail: "/thumbnails/example.jpg", scale: [1, 1, 1] },
+  { name: "Platillo 2", url: "/models/dish2.glb", iosUrl: "/models/dish2.usdz", thumbnail: "/thumbnails/dish2.jpg", scale: [1, 1, 1] },
+  { name: "Platillo 3", url: "/models/dish3.glb", iosUrl: "/models/dish3.usdz", thumbnail: "/thumbnails/dish3.jpg", scale: [1, 1, 1] },
 ];
 
-const defaultModel = {
-  name: "Modelo por Defecto",
-  url: "/models/default.glb",
-  iosUrl: "/models/default.usdz",
-  thumbnail: "/thumbnails/default.jpg",
-  scale: [1, 1, 1],
-  description: "Modelo de respaldo",
-  price: "N/A",
-};
+const defaultModel = { name: "Modelo por Defecto", url: "/models/default.glb", iosUrl: "/models/default.usdz", thumbnail: "/thumbnails/default.jpg", scale: [1, 1, 1] };
 
 const buttonVariants = {
-  initial: { opacity: 0, y: 15 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
-  hover: { scale: 1.1, boxShadow: "0 10px 25px rgba(249, 115, 22, 0.3)", transition: { duration: 0.2 } },
-  selected: { scale: 1.05, borderColor: "#f97316", boxShadow: "0 0 15px rgba(249, 115, 22, 0.5)" },
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
+  hover: { scale: 1.05, boxShadow: "0 10px 20px rgba(249, 115, 22, 0.3)" },
+  selected: { scale: 1.05, borderColor: "#f97316", borderWidth: "2px", boxShadow: "0 0 15px rgba(249, 115, 22, 0.4)", transition: { type: "spring", stiffness: 300 } },
+};
+
+const titleVariants = {
+  initial: { opacity: 0, scale: 0.9 },
+  animate: { opacity: 1, scale: 1, transition: { duration: 0.6, type: "spring", stiffness: 100 } },
+  hover: { scale: 1.05, color: "#f97316", transition: { duration: 0.3 } },
 };
 
 const textVariants = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
-  hover: { color: "#f97316", scale: 1.02 },
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.6, delay: 0.2 } },
+  hover: { opacity: 0.9 },
 };
 
-const qrVariants = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
-  hover: { scale: 1.05, boxShadow: "0 12px 30px rgba(249, 115, 22, 0.25)" },
-};
-
-const viewerVariants = {
-  initial: { opacity: 0, scale: 0.98 },
-  animate: { opacity: 1, scale: 1, transition: { duration: 0.6, ease: "easeOut" } },
+const qrContainerVariants = {
+  initial: { opacity: 0, scale: 0.95 },
+  animate: { opacity: 1, scale: 1, transition: { duration: 0.6, type: "spring", stiffness: 100 } },
+  hover: { boxShadow: "0 15px 30px rgba(0, 0, 0, 0.15)", borderColor: "#fed7aa", backgroundColor: "#fff7ed" },
 };
 
 const VRSection = memo(() => {
   const [selectedModel, setSelectedModel] = useState(models[0] || defaultModel);
   const [isArMode, setIsArMode] = useState(false);
   const [isArSupported, setIsArSupported] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const viewerRef = useRef(null);
 
   useEffect(() => {
@@ -86,14 +61,10 @@ const VRSection = memo(() => {
   }, []);
 
   const handleSelectModel = useCallback((model) => {
-    if (!model || !model.url) {
-      console.error("Modelo inválido seleccionado:", model);
-      setSelectedModel(defaultModel);
-    } else {
-      setSelectedModel(model);
-    }
+    setIsLoading(true);
+    setSelectedModel(model || defaultModel);
     setIsArMode(false);
-    if (viewerRef.current) viewerRef.current.resetModel(); // Reiniciar modelo al cambiar
+    if (viewerRef.current) viewerRef.current.resetModel();
   }, []);
 
   const handleToggleAr = useCallback((e) => {
@@ -114,144 +85,147 @@ const VRSection = memo(() => {
     }
   }, [isArSupported, isArMode]);
 
-  const renderedThumbnails = models.map((model) => (
-    <motion.button
-      key={model.url}
-      variants={buttonVariants}
-      initial="initial"
-      animate={selectedModel.url === model.url ? "selected" : "animate"}
-      whileHover="hover"
-      onClick={() => handleSelectModel(model)}
-      className="relative bg-white rounded-xl shadow-md overflow-hidden border-2 border-gray-200 w-28 h-32 focus:outline-none focus:ring-2 focus:ring-orange-400 transition-all duration-200"
-      aria-label={`Seleccionar ${model.name}`}
-    >
-      <img
-        src={model.thumbnail}
-        alt={`Miniatura de ${model.name}`}
-        className="w-full h-20 object-cover rounded-t-xl"
-        loading="lazy"
-        onError={(e) => (e.target.src = "/thumbnails/placeholder.jpg")}
-      />
-      <div className="p-2 text-center">
-        <p className="text-xs font-semibold text-gray-800 font-poppins truncate">{model.name}</p>
-        <p className="text-xs text-gray-600 font-roboto">{model.price}</p>
-      </div>
-    </motion.button>
-  ));
-
-  if (!selectedModel || !selectedModel.url) {
-    return (
-      <section id="3d" className="py-16 bg-gray-50 min-h-screen flex items-center justify-center">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-red-600">
-          <p className="font-roboto">Error: No se pudo cargar el modelo seleccionado.</p>
-        </div>
-      </section>
-    );
-  }
+  const handleLoad = useCallback(() => {
+    setIsLoading(false);
+  }, []);
 
   return (
-    <section id="3d" className="py-16 bg-gray-50 min-h-screen flex items-center justify-center">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <div className="lg:col-span-3 flex flex-col gap-6">
-          <motion.div
-            variants={viewerVariants}
-            initial="initial"
-            animate="animate"
-            className="relative h-[70vh] bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200"
-          >
-            <ThreeDViewer
-              key={selectedModel.url}
-              ref={viewerRef}
-              modelUrl={selectedModel.url}
-              iosModelUrl={selectedModel.iosUrl}
-              scale={selectedModel.scale}
-              backgroundColor="#ffffff"
-              onLoad={() => console.log("Modelo listo en VRSection")}
-              onError={(err) => console.error("Error desde VRSection:", err)}
-            />
-            <div className="absolute top-4 left-4 flex gap-3 z-20">
-              <motion.button
-                onClick={() => handleSelectModel(selectedModel)}
-                className="bg-white text-orange-600 px-4 py-2 rounded-full hover:bg-orange-50 border border-orange-200 font-roboto text-sm shadow-md transition-all duration-200"
-                whileHover={{ scale: 1.05 }}
-                aria-label="Reiniciar vista del modelo"
-              >
-                Reiniciar
-              </motion.button>
-              {isArSupported && (
-                <motion.button
-                  onClick={handleToggleAr}
-                  className={`${
-                    isArMode ? "bg-red-500 hover:bg-red-600" : "bg-orange-500 hover:bg-orange-600"
-                  } text-white px-4 py-2 rounded-full font-roboto text-sm shadow-md transition-all duration-200`}
-                  whileHover={{ scale: 1.05 }}
-                  aria-label={isArMode ? "Salir de AR" : "Ver en AR"}
-                >
-                  {isArMode ? "Salir de AR" : "Ver en AR"}
-                </motion.button>
+    <section id="3dvr" className="py-8 sm:py-12 lg:py-16 bg-gray-50 text-center">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:gap-6">
+          {/* Visor y Carrusel */}
+          <div className="lg:col-span-3 flex flex-col gap-4">
+            {/* Visor 3D */}
+            <motion.div
+              className="relative h-[35vh] sm:h-[45vh] lg:h-[50vh] bg-gray-100 rounded-3xl shadow-2xl overflow-hidden border border-gray-200"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.6 }}
+            >
+              <ThreeDViewer
+                key={selectedModel.url}
+                ref={viewerRef}
+                modelUrl={selectedModel.url}
+                iosModelUrl={selectedModel.iosUrl}
+                scale={selectedModel.scale}
+                backgroundColor="#f3f4f6"
+                autoRotate={true}
+                onLoad={handleLoad}
+                onError={(err) => console.error("Error en VRSection:", err)}
+              />
+              {isLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-200/50">
+                  <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                </div>
               )}
-            </div>
-            <div className="absolute bottom-4 left-4 text-xs text-gray-700 font-roboto bg-white/90 p-2 rounded-lg shadow-md z-20">
-              <p>© Izquierda + arrastrar: Rotar</p>
-              <p>© Rueda: Zoom</p>
-              <p>© Derecha + arrastrar: Mover</p>
-            </div>
-          </motion.div>
+              <div className="absolute top-4 right-4 flex gap-3 z-20">
+                <motion.button
+                  onClick={() => handleSelectModel(selectedModel)}
+                  className="bg-white text-orange-600 px-4 py-2 rounded-full border border-orange-200 shadow-md hover:bg-gradient-to-r hover:from-orange-50 hover:to-orange-100 flex items-center gap-2"
+                  whileHover={{ scale: 1.1 }}
+                >
+                  <MdRefresh className="text-xl" />
+                  Reiniciar
+                </motion.button>
+                {isArSupported && (
+                  <motion.button
+                    onClick={handleToggleAr}
+                    className={`${
+                      isArMode ? "bg-red-600 hover:bg-red-700" : "bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700"
+                    } text-white px-4 py-2 rounded-full shadow-md flex items-center gap-2`}
+                    whileHover={{ scale: 1.1 }}
+                  >
+                    <MdViewInAr className="text-xl" />
+                    {isArMode ? "Salir AR" : "Ver en AR"}
+                  </motion.button>
+                )}
+              </div>
+            </motion.div>
 
-          <motion.div
-            className="flex justify-center gap-6 flex-wrap"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-          >
-            {renderedThumbnails}
-          </motion.div>
-        </div>
-
-        <motion.div
-          className="lg:col-span-1 flex flex-col gap-8"
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <div className="text-center lg:text-left">
-            <motion.h2
-              className="text-4xl font-extrabold text-gray-900 font-poppins cursor-pointer"
-              variants={textVariants}
-              whileHover="hover"
-            >
-              Explora en 3D y AR
-            </motion.h2>
-            <motion.p
-              className="text-lg text-gray-600 font-roboto mt-3 cursor-pointer"
-              variants={textVariants}
-              whileHover="hover"
-            >
-              Visualiza tus platillos favoritos.
-            </motion.p>
+            {/* Carrusel de miniaturas */}
+            <div className="py-2">
+              <Swiper
+                modules={[Navigation]}
+                navigation={{
+                  nextEl: ".swiper-button-next",
+                  prevEl: ".swiper-button-prev",
+                }}
+                spaceBetween={10}
+                slidesPerView={1}
+                breakpoints={{
+                  640: { slidesPerView: 2 },
+                  1024: { slidesPerView: 4 },
+                }}
+                className="w-full max-w-full px-2"
+              >
+                {models.map((model) => (
+                  <SwiperSlide key={model.url}>
+                    <motion.button
+                      variants={buttonVariants}
+                      initial="initial"
+                      animate={selectedModel.url === model.url ? "selected" : "animate"}
+                      whileHover="hover"
+                      onClick={() => handleSelectModel(model)}
+                      className="bg-white rounded-lg shadow-md border border-gray-200 p-2 hover:bg-gradient-to-br hover:from-orange-50 hover:to-orange-100 transition-all w-full max-w-[140px] mx-auto"
+                    >
+                      <div className="w-full h-20 overflow-hidden rounded-md">
+                        <img src={model.thumbnail} alt={model.name} className="w-full h-full object-cover" loading="lazy" />
+                      </div>
+                      <div className="text-left mt-2">
+                        <p className="text-sm font-semibold text-gray-800 truncate" style={{ fontFamily: "'Poppins', sans-serif" }}>
+                          {model.name}
+                        </p>
+                      </div>
+                    </motion.button>
+                  </SwiperSlide>
+                ))}
+                <div className="swiper-button-prev text-orange-500"></div>
+                <div className="swiper-button-next text-orange-500"></div>
+              </Swiper>
+            </div>
           </div>
+
+          {/* QR */}
           <motion.div
-            className="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 flex flex-col items-center self-end w-full max-w-sm"
-            variants={qrVariants}
+            className="lg:col-span-1 h-full bg-white p-4 sm:p-6 lg:p-8 rounded-3xl shadow-2xl border border-gray-200 flex flex-col justify-between items-center gap-4"
+            variants={qrContainerVariants}
             initial="initial"
             animate="animate"
             whileHover="hover"
+            transition={{ duration: 0.3 }}
           >
-            <motion.p
-              className="text-lg font-semibold text-gray-800 font-roboto mb-4 cursor-pointer text-center"
-              variants={textVariants}
-              whileHover="hover"
-            >
-              ¡Escanea para ver la carta en AR!
-            </motion.p>
-            <img
-              src="/qr/qr-carta-digital.png"
-              alt="QR para Carta Digital"
-              className="w-48 h-48 object-contain rounded-xl shadow-lg"
-              loading="lazy"
-            />
+            <div className="flex flex-col items-center gap-4">
+              <motion.h2
+                className="text-2xl sm:text-3xl lg:text-4xl font-bold text-orange-600"
+                style={{ fontFamily: "'Poppins', sans-serif", textShadow: "0 2px 4px rgba(0, 0, 0, 0.1)" }}
+                variants={titleVariants}
+                initial="initial"
+                animate="animate"
+                whileHover="hover"
+              >
+                Mira en vivo una carta 3D
+              </motion.h2>
+              <motion.p
+                className="text-sm sm:text-base lg:text-lg text-gray-700 text-center leading-relaxed"
+                variants={textVariants}
+                initial="initial"
+                animate="animate"
+                whileHover="hover"
+              >
+                Escanea el código QR para ver la experiencia 3D.
+              </motion.p>
+            </div>
+            <div className="relative group">
+              <img
+                src="/qr/qr-carta-digital.png"
+                alt="QR Carta"
+                className="w-40 h-40 sm:w-48 h-48 lg:w-56 h-56 object-contain rounded-2xl shadow-xl transition-transform group-hover:scale-110 group-hover:border-2 group-hover:border-orange-500"
+                loading="lazy"
+              />
+              <div className="absolute inset-0 bg-orange-500/30 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            </div>
           </motion.div>
-        </motion.div>
+        </div>
       </div>
     </section>
   );

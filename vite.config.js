@@ -6,20 +6,50 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'), // Alias para src/
+      '@': path.resolve(__dirname, './src'),
     },
   },
   server: {
-    host: '0.0.0.0', // Permite conexiones desde cualquier dirección IP en la red local
-    port: 5173,      // Puerto predeterminado de Vite (puedes cambiarlo si lo necesitas)
-    strictPort: true, // Falla si el puerto está ocupado
-    open: true,      // Abre el navegador automáticamente al iniciar
-    cors: true,      // Habilita CORS para el servidor de desarrollo
+    host: '0.0.0.0', // Permite conexiones desde cualquier IP
+    port: 5173,
+    strictPort: true,
+    open: false, // Mejor desactivar para evitar que abra automáticamente
+    cors: true,
+    
+    // 🔥 Configuración crítica para QR en móviles:
+    hmr: {
+      clientPort: 5173, // Usa el mismo puerto para HMR
+      protocol: 'ws',
+      // Eliminamos host fijo para que Vite use la IP de red automáticamente
+      // host: '192.168.18.22' // Comentado o eliminado
+    },
+    
+    // 🔄 Proxy para API (evita problemas CORS)
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000', // Ajusta a tu URL de backend
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      }
+    }
   },
   build: {
-    outDir: 'dist',       // Carpeta de salida para el build
-    sourcemap: true,      // Genera sourcemaps para depuración
-    minify: 'esbuild',    // Usa esbuild para minificación rápida
-    target: 'esnext',     // Soporte para las últimas características de JS
+    outDir: 'dist',
+    sourcemap: true,
+    minify: 'esbuild',
+    target: 'esnext',
+    // ⚡ Optimización para producción:
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          vendors: ['axios', 'framer-motion']
+        }
+      }
+    }
   },
+  // 🛡️ Opcional: Prevenir errores de caché en desarrollo
+  cacheDir: './.vite-cache'
 });
